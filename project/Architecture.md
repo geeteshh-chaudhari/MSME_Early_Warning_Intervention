@@ -32,3 +32,10 @@ Several cross-module IDs have no foreign keys; their integrity enforcement is no
 ## Integration Status
 
 The domain names and schema describe a profile/finance -> assessment -> warning/intervention workflow. Business-service implementations, service-to-service APIs, gateway routes, and workflow logic are not present in this checkout. The DDL has not been executed against Oracle during this review.
+
+
+## Service 3 implementation update 15 October 2026
+
+`warning-intervention-service/` now provides a Java 25 Spring Boot 4.1.1 executable-JAR source project using Spring JDBC, configurable OAuth2 JWT resource-server security and the existing Eureka client configuration. Default port is 8083; the registry remains at the existing development URL on port 8080. No gateway route is changed.
+
+The module owns warning/intervention/review/audit persistence and proposes an AUTH_IDENTITY mapping plus intervention owner and due-date columns. The current reference-schema adapter needs explicit upstream grants/synonyms and retains the root DDL's cross-schema coupling. The adapter can be replaced when MS1/MS2 service contracts are agreed. SQL extensions are not executed automatically. Runtime integration and the final build remain unverified.

@@ -51,3 +51,8 @@ Allowed values do not define lifecycle transitions or role permissions.
 No foreign keys are declared for threshold MSME/proposer/reviewer IDs, assessment MSME/snapshot IDs, warning assessment ID, intervention creator/closer IDs, follow-up assessment/reviewer IDs, or activity MSME/actor/entity IDs. Role validation and same-MSME consistency are not guaranteed by the existing foreign keys.
 
 Financial amounts use `NUMBER(18,2)`; indicator values use `NUMBER(12,4)`. API serialization, currency, timezone handling, assessment formulas, threshold selection, and service integration contracts remain undefined.
+
+
+## Proposed Service 3 API update 15 October 2026
+
+The initial module-local REST contract is documented in `warning-intervention-service/docs/openapi.json`, with lifecycle defaults and permissions in its README. This records a proposed Service 3 interface for owner review; it does not approve or change MS1/MS2 APIs, event contracts or gateway routing. No upstream HTTP contract is invented. The service currently uses an isolated reference-schema JDBC adapter requiring agreed read access. Identity-provider configuration and shared integration remain pending.
