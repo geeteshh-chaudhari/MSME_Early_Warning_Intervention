@@ -192,7 +192,19 @@ CREATE TABLE threshold_config (
     CONSTRAINT chk_credit_threshold
         CHECK (
             credit_utilisation_pct >= 0
-        )
+        ),
+
+    CONSTRAINT fk_threshold_config_msme
+        FOREIGN KEY (msme_id)
+        REFERENCES msme(msme_id),
+
+    CONSTRAINT fk_threshold_proposed_by
+        FOREIGN KEY (proposed_by_user_id)
+        REFERENCES app_user(user_id),
+
+    CONSTRAINT fk_threshold_reviewed_by
+        FOREIGN KEY (reviewed_by_user_id)
+        REFERENCES app_user(user_id)
 );
 
 CREATE TABLE risk_assessment (
@@ -234,7 +246,15 @@ CREATE TABLE risk_assessment (
 
     CONSTRAINT fk_previous_assessment
         FOREIGN KEY (previous_assessment_id)
-        REFERENCES risk_assessment(assessment_id)
+        REFERENCES risk_assessment(assessment_id),
+
+    CONSTRAINT fk_assessment_msme
+        FOREIGN KEY (msme_id)
+        REFERENCES msme(msme_id),
+
+    CONSTRAINT fk_assessment_snapshot
+        FOREIGN KEY (snapshot_id)
+        REFERENCES financial_snapshot(snapshot_id)
 );
 
 
@@ -307,7 +327,11 @@ CREATE TABLE warning (
                 'CLOSED_REVIEWED',
                 'CLOSED'
             )
-        )
+        ),
+
+    CONSTRAINT fk_warning_assessment
+        FOREIGN KEY (assessment_id)
+        REFERENCES risk_assessment(assessment_id)
 );
 
 CREATE TABLE intervention (
@@ -337,7 +361,15 @@ CREATE TABLE intervention (
 
     CONSTRAINT fk_intervention_warning
         FOREIGN KEY (warning_id)
-        REFERENCES warning(warning_id)
+        REFERENCES warning(warning_id),
+
+    CONSTRAINT fk_intervention_created_by
+        FOREIGN KEY (created_by_user_id)
+        REFERENCES app_user(user_id),
+
+    CONSTRAINT fk_intervention_closed_by
+        FOREIGN KEY (closed_by_user_id)
+        REFERENCES app_user(user_id)
 );
 
 CREATE TABLE follow_up_review (
@@ -378,7 +410,15 @@ CREATE TABLE follow_up_review (
 
     CONSTRAINT fk_followup_intervention
         FOREIGN KEY (intervention_id)
-        REFERENCES intervention(intervention_id)
+        REFERENCES intervention(intervention_id),
+
+    CONSTRAINT fk_followup_assessment
+        FOREIGN KEY (assessment_id)
+        REFERENCES risk_assessment(assessment_id),
+
+    CONSTRAINT fk_followup_reviewed_by
+        FOREIGN KEY (reviewed_by_user_id)
+        REFERENCES app_user(user_id)
 );
 
 CREATE TABLE activity_log (
@@ -414,7 +454,15 @@ CREATE TABLE activity_log (
     CONSTRAINT chk_activity_metadata_json
         CHECK (
             metadata_json IS JSON
-        )
+        ),
+
+    CONSTRAINT fk_activity_msme
+        FOREIGN KEY (msme_id)
+        REFERENCES msme(msme_id),
+
+    CONSTRAINT fk_activity_actor
+        FOREIGN KEY (actor_user_id)
+        REFERENCES app_user(user_id)
 );
 
 CREATE INDEX idx_threshold_msme
