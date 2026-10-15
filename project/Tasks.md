@@ -33,3 +33,12 @@ These statuses confirm files and configuration are present. Builds, runtime inte
 - Cross-module ID integrity and automatic timestamp updates need implementation decisions.
 
 Update progress with evidence as work is added; table definitions alone do not establish service completion.
+
+
+## Warning and Intervention implementation update 15 October 2026
+
+Owner: Geetesh. The `warning-intervention-service/` source project is now present with protected REST APIs, Oracle JDBC persistence, warning/decision history, owned interventions, due dates, monthly reviews, and representative summaries. Java 25, Boot 4.1.1, Cloud 2025.1.3 and a Maven wrapper pinned to 3.9.1 are configured.
+
+Final build and tests are unverified; further testing was stopped at the user's request. Live Oracle, identity-provider integration and Eureka registration have not been verified. No database migrations were applied.
+
+Integration work remaining: agree MS1/MS2 interfaces or read grants/synonyms, select an identity provider and provision trusted identity mappings, review owner/due-date schema extensions and lifecycle defaults, configure the gateway route, and verify the designated development deployment. Existing infrastructure and root DDL are preserved.

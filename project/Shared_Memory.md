@@ -76,3 +76,10 @@ Dependencies:
 - Configure and verify gateway routes after downstream services are available.
 - Keep Tasks.md updated with actual implementation and verification evidence.
 
+
+
+## Warning and Intervention implementation update 15 October 2026
+
+The new `warning-intervention-service/` module contains the Service 3 implementation. Its `client/UpstreamClient` boundary currently has a reference-schema JDBC adapter; the other two business services are not yet created, so no upstream HTTP routes are asserted. Human identity is mapped by signed JWT issuer/subject to active APP_USER records; roles and assignments are read from trusted records. A scoped producer may create warnings. Representatives have separate restricted read endpoints.
+
+The README records provisional workflow decisions, including atomic RM acceptance with an owned action/due date, one active intervention cycle, human-selected follow-up outcomes, and administrator closure. Proposed schema extensions are delivered as SQL files only. Existing root credentials were not copied or printed. Further tests were stopped at the user's request; final build, Oracle, IdP, gateway and Eureka integration remain unverified.
