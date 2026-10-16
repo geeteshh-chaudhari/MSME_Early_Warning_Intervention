@@ -13,6 +13,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.msme.dto.snapshot.AssessmentInputResponse;
 import com.msme.dto.snapshot.CreateFinancialSnapshotRequest;
 import com.msme.dto.snapshot.FinancialSnapshotResponse;
 import com.msme.dto.snapshot.SnapshotReadinessResponse;
@@ -73,10 +74,6 @@ public class FinancialSnapshotService {
 
         Msme msme = getMsmeOrThrow(msmeId);
 
-        /*
-         * Financial data cannot be submitted for
-         * a deactivated MSME.
-         */
         if (!MSME_ACTIVE.equals(msme.getIsActive())) {
             throw new InvalidRequestException(
                 "Financial data cannot be submitted "
@@ -87,26 +84,9 @@ public class FinancialSnapshotService {
         LocalDate reportingPeriod =
                 request.getReportingPeriod();
 
-        /*
-         * Database requires reporting period to represent
-         * the first day of the reporting month.
-         *
-         * Example:
-         * April 2026 -> 2026-04-01
-         */
         validateReportingPeriod(reportingPeriod);
-
-        /*
-         * Cross-field financial validation.
-         */
         validateFinancialValues(request);
 
-        /*
-         * Prevent duplicate monthly snapshot.
-         *
-         * Oracle UNIQUE(msme_id, reporting_period)
-         * remains the final database-level protection.
-         */
         if (financialSnapshotRepository
                 .existsByMsmeIdAndReportingPeriod(
                     msmeId,
@@ -120,38 +100,24 @@ public class FinancialSnapshotService {
             );
         }
 
-        LocalDateTime now =
-                LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now();
 
         FinancialSnapshot snapshot =
                 new FinancialSnapshot();
 
-        /*
-         * MSME and submitting user come from authenticated
-         * identity, not from request body.
-         */
         snapshot.setMsmeId(msmeId);
-
         snapshot.setSubmittedByUserId(
             principal.getUserId()
         );
 
-        snapshot.setReportingPeriod(
-            reportingPeriod
-        );
-
-        snapshot.setRevenue(
-            request.getRevenue()
-        );
-
+        snapshot.setReportingPeriod(reportingPeriod);
+        snapshot.setRevenue(request.getRevenue());
         snapshot.setTotalReceivables(
             request.getTotalReceivables()
         );
-
         snapshot.setOverdueReceivables(
             request.getOverdueReceivables()
         );
-
         snapshot.setCreditUsed(
             request.getCreditUsed()
         );
@@ -168,7 +134,7 @@ public class FinancialSnapshotService {
 
     /*
      * =========================================================
-     * MSME REPRESENTATIVE - VIEW OWN FINANCIAL HISTORY
+     * MSME REPRESENTATIVE - OWN FINANCIAL HISTORY
      * =========================================================
      */
 
@@ -198,7 +164,7 @@ public class FinancialSnapshotService {
 
     /*
      * =========================================================
-     * RM / RISK ADMIN - VIEW MSME FINANCIAL HISTORY
+     * RM / RISK ADMIN - MSME FINANCIAL HISTORY
      * =========================================================
      */
 
@@ -213,13 +179,7 @@ public class FinancialSnapshotService {
         Msme msme =
                 getMsmeOrThrow(msmeId);
 
-        /*
-         * Risk Admin can view any MSME.
-         *
-         * RM can view only MSMEs assigned to that RM.
-         */
         if (ROLE_RM.equals(principal.getRole())) {
-
             verifyMsmeBelongsToRm(
                 msme,
                 principal.getUserId()
@@ -235,7 +195,7 @@ public class FinancialSnapshotService {
 
     /*
      * =========================================================
-     * RISK ADMIN - VIEW ALL FINANCIAL SNAPSHOTS
+     * RISK ADMIN - ALL FINANCIAL SNAPSHOTS
      * =========================================================
      */
 
@@ -252,16 +212,7 @@ public class FinancialSnapshotService {
 
     /*
      * =========================================================
-     * VIEW ONE MSME SNAPSHOT FOR ONE REPORTING PERIOD
-     *
-     * RISK_ADMIN:
-     *      any MSME
-     *
-     * RM:
-     *      assigned MSME only
-     *
-     * MSME_REP:
-     *      own MSME only
+     * SHARED - ONE SNAPSHOT FOR ONE REPORTING PERIOD
      * =========================================================
      */
 
@@ -306,18 +257,7 @@ public class FinancialSnapshotService {
 
     /*
      * =========================================================
-     * MSME REPRESENTATIVE - ASSESSMENT READINESS
-     *
-     * IMPORTANT:
-     * This does NOT perform risk assessment.
-     *
-     * It checks only whether:
-     *
-     * current month
-     * previous month
-     * two months prior
-     *
-     * are all present.
+     * MSME REPRESENTATIVE - READINESS
      * =========================================================
      */
 
@@ -341,6 +281,183 @@ public class FinancialSnapshotService {
         getMsmeOrThrow(msmeId);
 
         validateReportingPeriod(reportingPeriod);
+
+        return buildReadinessResponse(
+                msmeId,
+                reportingPeriod
+        );
+    }
+
+    /*
+     * =========================================================
+     * ALL THREE ROLES - ASSESSMENT READINESS
+     *
+     * MSME_REP:
+     *      MSME is derived from JWT.
+     *
+     * RM:
+     *      Requested MSME must belong to RM.
+     *
+     * RISK_ADMIN:
+     *      Any MSME.
+     *
+     * Useful for enabling/disabling the Assessment button.
+     * =========================================================
+     */
+
+    @Transactional(readOnly = true)
+    @PreAuthorize(
+        "hasAnyRole('RISK_ADMIN', 'RM', 'MSME_REP')"
+    )
+    public SnapshotReadinessResponse checkAssessmentReadiness(
+            Long requestedMsmeId,
+            LocalDate reportingPeriod) {
+
+        CustomUserPrincipal principal =
+                getCurrentPrincipal();
+
+        validateReportingPeriod(reportingPeriod);
+
+        Long authorizedMsmeId =
+                resolveAuthorizedMsmeId(
+                    principal,
+                    requestedMsmeId
+                );
+
+        Msme msme =
+                getMsmeOrThrow(authorizedMsmeId);
+
+        authorizeMsmeAccess(
+                principal,
+                msme
+        );
+
+        return buildReadinessResponse(
+                authorizedMsmeId,
+                reportingPeriod
+        );
+    }
+
+    /*
+     * =========================================================
+     * ASSESSMENT INPUT FOR MS2
+     *
+     * Returns:
+     * - MSME details needed for calculation
+     * - sanctioned credit limit
+     * - period
+     * - period - 1 month
+     * - period - 2 months
+     *
+     * Authentication/authorization is based on the SAME
+     * user's JWT forwarded by MS2.
+     * =========================================================
+     */
+
+    @Transactional(readOnly = true)
+    @PreAuthorize(
+        "hasAnyRole('RISK_ADMIN', 'RM', 'MSME_REP')"
+    )
+    public AssessmentInputResponse getAssessmentInput(
+            Long requestedMsmeId,
+            LocalDate reportingPeriod) {
+
+        CustomUserPrincipal principal =
+                getCurrentPrincipal();
+
+        validateReportingPeriod(reportingPeriod);
+
+        /*
+         * MSME_REP cannot select another MSME.
+         *
+         * RM and Risk Admin provide selected MSME ID,
+         * but authorization is still performed below.
+         */
+        Long authorizedMsmeId =
+                resolveAuthorizedMsmeId(
+                    principal,
+                    requestedMsmeId
+                );
+
+        Msme msme =
+                getMsmeOrThrow(authorizedMsmeId);
+
+        authorizeMsmeAccess(
+                principal,
+                msme
+        );
+
+        /*
+         * Do not perform an assessment against an inactive MSME.
+         */
+        if (!MSME_ACTIVE.equals(msme.getIsActive())) {
+            throw new InvalidRequestException(
+                "Assessment cannot be performed "
+                + "for an inactive MSME"
+            );
+        }
+
+        LocalDate period0 =
+                reportingPeriod;
+
+        LocalDate period1 =
+                reportingPeriod.minusMonths(1);
+
+        LocalDate period2 =
+                reportingPeriod.minusMonths(2);
+
+        FinancialSnapshot current =
+                getRequiredSnapshot(
+                    authorizedMsmeId,
+                    period0
+                );
+
+        FinancialSnapshot previous =
+                getRequiredSnapshot(
+                    authorizedMsmeId,
+                    period1
+                );
+
+        FinancialSnapshot twoMonthsPrior =
+                getRequiredSnapshot(
+                    authorizedMsmeId,
+                    period2
+                );
+
+        /*
+         * Return chronologically:
+         *
+         * period-2
+         * period-1
+         * period
+         *
+         * This is convenient for MS2's calculation engine.
+         */
+        List<FinancialSnapshotResponse> snapshots =
+                List.of(
+                    toResponse(twoMonthsPrior),
+                    toResponse(previous),
+                    toResponse(current)
+                );
+
+        return new AssessmentInputResponse(
+                msme.getMsmeId(),
+                msme.getBusinessName(),
+                msme.getSanctionedCreditLimit(),
+                reportingPeriod,
+                snapshots
+        );
+    }
+
+    /*
+     * =========================================================
+     * READINESS BUILDER
+     * =========================================================
+     */
+
+    private SnapshotReadinessResponse buildReadinessResponse(
+            Long msmeId,
+            LocalDate reportingPeriod) {
 
         LocalDate currentPeriod =
                 reportingPeriod;
@@ -413,6 +530,90 @@ public class FinancialSnapshotService {
 
     /*
      * =========================================================
+     * REQUIRED SNAPSHOT LOOKUP
+     * =========================================================
+     */
+
+    private FinancialSnapshot getRequiredSnapshot(
+            Long msmeId,
+            LocalDate reportingPeriod) {
+
+        return financialSnapshotRepository
+                .findByMsmeIdAndReportingPeriod(
+                    msmeId,
+                    reportingPeriod
+                )
+                .orElseThrow(() ->
+                    new InvalidRequestException(
+                        "Assessment data is incomplete. "
+                        + "Missing financial snapshot for "
+                        + YearMonth.from(reportingPeriod)
+                    )
+                );
+    }
+
+    /*
+     * =========================================================
+     * RESOLVE MSME ACCORDING TO ROLE
+     * =========================================================
+     */
+
+    private Long resolveAuthorizedMsmeId(
+            CustomUserPrincipal principal,
+            Long requestedMsmeId) {
+
+        /*
+         * MSME Representative:
+         *
+         * Ignore client-selected ownership.
+         * MSME comes from authenticated principal.
+         */
+        if (ROLE_MSME_REP.equals(
+                principal.getRole())) {
+
+            Long principalMsmeId =
+                    principal.getMsmeId();
+
+            if (principalMsmeId == null) {
+                throw new ForbiddenOperationException(
+                    "No MSME is associated with this account"
+                );
+            }
+
+            /*
+             * If caller supplied an MSME ID, it must still
+             * match their own MSME.
+             */
+            if (requestedMsmeId != null
+                    && !principalMsmeId.equals(
+                        requestedMsmeId
+                    )) {
+
+                throw new ForbiddenOperationException(
+                    "You are not authorized to access "
+                    + "this MSME"
+                );
+            }
+
+            return principalMsmeId;
+        }
+
+        /*
+         * RM and Risk Admin must select an MSME.
+         */
+        if (requestedMsmeId == null
+                || requestedMsmeId <= 0) {
+
+            throw new InvalidRequestException(
+                "Valid MSME ID is required"
+            );
+        }
+
+        return requestedMsmeId;
+    }
+
+    /*
+     * =========================================================
      * FINANCIAL VALIDATION
      * =========================================================
      */
@@ -420,14 +621,6 @@ public class FinancialSnapshotService {
     private void validateFinancialValues(
             CreateFinancialSnapshotRequest request) {
 
-        /*
-         * @DecimalMin already checks individual values
-         * for negative numbers.
-         *
-         * This is the cross-field rule from the DB schema:
-         *
-         * overdue_receivables <= total_receivables
-         */
         if (request.getOverdueReceivables()
                 .compareTo(
                     request.getTotalReceivables()
@@ -455,14 +648,7 @@ public class FinancialSnapshotService {
             );
         }
 
-        /*
-         * Database rule:
-         *
-         * reporting_period =
-         * TRUNC(reporting_period, 'MM')
-         */
         if (reportingPeriod.getDayOfMonth() != 1) {
-
             throw new InvalidRequestException(
                 "Reporting period must be the first "
                 + "day of the reporting month"
@@ -491,7 +677,8 @@ public class FinancialSnapshotService {
         }
 
         /*
-         * RM can access only assigned MSMEs.
+         * RM:
+         * requested MSME must actually be assigned to RM.
          */
         if (ROLE_RM.equals(role)) {
 
@@ -504,8 +691,8 @@ public class FinancialSnapshotService {
         }
 
         /*
-         * MSME Representative can access only
-         * their own MSME.
+         * MSME Representative:
+         * only own MSME.
          */
         if (ROLE_MSME_REP.equals(role)) {
 

@@ -42,7 +42,8 @@ public class FinancialSnapshotResponse {
             Long submittedByUserId,
             LocalDateTime submittedAt,
             LocalDateTime createdAt,
-            LocalDateTime updatedAt) {
+            LocalDateTime updatedAt
+            ) {
 
         this.snapshotId = snapshotId;
         this.msmeId = msmeId;
@@ -156,4 +157,6 @@ public class FinancialSnapshotResponse {
 
         this.updatedAt = updatedAt;
     }
+
+    
 }
