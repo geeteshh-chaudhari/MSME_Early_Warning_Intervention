@@ -39,3 +39,18 @@ The domain names and schema describe a profile/finance -> assessment -> warning/
 `warning-intervention-service/` now provides a Java 25 Spring Boot 4.1.1 executable-JAR source project using Spring JDBC, configurable OAuth2 JWT resource-server security and the existing Eureka client configuration. Default port is 8083; the registry remains at the existing development URL on port 8080. No gateway route is changed.
 
 The module owns warning/intervention/review/audit persistence and proposes an AUTH_IDENTITY mapping plus intervention owner and due-date columns. The current reference-schema adapter needs explicit upstream grants/synonyms and retains the root DDL's cross-schema coupling. The adapter can be replaced when MS1/MS2 service contracts are agreed. SQL extensions are not executed automatically. Runtime integration and the final build remain unverified.
+
+
+## Dashboard service update 17 October 2026
+
+A separate dashboard-service now serves a local web dashboard and Python API on loopback port 8086. It imports the existing Recommendation-service MetricTools, Oracle repository and JWT/account/assignment checks; it introduces no new financial formulas, writes, gateway routes or Eureka registration. The sibling recommendation code and its configuration remain runtime dependencies.
+
+
+## Compact desktop layout update 17 October 2026
+
+All eight chart panels now share one four-by-two grid on desktop displays at least 1100px wide and 700px high. Summary cards and report controls remain above the grid. All 21 metrics remain available through the history selector and the All metrics dialog, which includes values, formulas and comparison periods. Data notes open in a separate accessible dialog. Smaller displays retain scrolling for readability. No API, authentication, Oracle query or financial formula changed. JavaScript syntax and HTML element/chart structure checks passed; visual browser verification was not performed.
+
+
+## Dashboard Eureka integration 17 October 2026
+
+Dashboard startup now registers dashboard-service with http://localhost:8080/eureka/, advertises DASHBOARD_PORT (8086 by default), sends heartbeats and deregisters on graceful shutdown. DASHBOARD_HOST defaults to localhost; home/status are / and process health is /health. The launcher freezes its listening port before shared configuration loading, keeping registration consistent. No registry-server, gateway, authentication or financial formula changes. All 20 isolated dashboard tests passed, including HTTP registration/deregistration against a test registry and custom-port configuration. The live registry is reachable and the current dashboard process responds on 8086, but registration requires restarting that existing process with the new code.

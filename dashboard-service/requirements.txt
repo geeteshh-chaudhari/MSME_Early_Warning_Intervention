@@ -1,0 +1,2 @@
+# Use the same tested dependency versions as the sibling service.
+-r ../Recommendation-service/requirements.txt
