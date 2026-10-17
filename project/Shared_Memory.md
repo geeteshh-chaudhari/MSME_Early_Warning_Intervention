@@ -83,3 +83,18 @@ Dependencies:
 The new `warning-intervention-service/` module contains the Service 3 implementation. Its `client/UpstreamClient` boundary currently has a reference-schema JDBC adapter; the other two business services are not yet created, so no upstream HTTP routes are asserted. Human identity is mapped by signed JWT issuer/subject to active APP_USER records; roles and assignments are read from trusted records. A scoped producer may create warnings. Representatives have separate restricted read endpoints.
 
 The README records provisional workflow decisions, including atomic RM acceptance with an owned action/due date, one active intervention cycle, human-selected follow-up outcomes, and administrator closure. Proposed schema extensions are delivered as SQL files only. Existing root credentials were not copied or printed. Further tests were stopped at the user's request; final build, Oracle, IdP, gateway and Eureka integration remain unverified.
+
+
+## Dashboard service update 17 October 2026
+
+Added dashboard-service at user request as a separate web dashboard with a Python API. Start with start-dashboard.cmd and open http://127.0.0.1:8086. Reuses recommendation .env by default; no credentials were copied or displayed. Login tokens stay in browser memory. Revenue, receivables, credit, seasonal overlays, saved breaches and all 21 metric histories are displayed using shared deterministic tools, without Ollama calls. 17 fixture/API tests and JavaScript syntax passed; live Oracle/login and visual browser review are unverified. Existing service and gateway code were left unchanged.
+
+
+## Compact desktop layout update 17 October 2026
+
+All eight chart panels now share one four-by-two grid on desktop displays at least 1100px wide and 700px high. Summary cards and report controls remain above the grid. All 21 metrics remain available through the history selector and the All metrics dialog, which includes values, formulas and comparison periods. Data notes open in a separate accessible dialog. Smaller displays retain scrolling for readability. No API, authentication, Oracle query or financial formula changed. JavaScript syntax and HTML element/chart structure checks passed; visual browser verification was not performed.
+
+
+## Dashboard Eureka integration 17 October 2026
+
+Dashboard startup now registers dashboard-service with http://localhost:8080/eureka/, advertises DASHBOARD_PORT (8086 by default), sends heartbeats and deregisters on graceful shutdown. DASHBOARD_HOST defaults to localhost; home/status are / and process health is /health. The launcher freezes its listening port before shared configuration loading, keeping registration consistent. No registry-server, gateway, authentication or financial formula changes. All 20 isolated dashboard tests passed, including HTTP registration/deregistration against a test registry and custom-port configuration. The live registry is reachable and the current dashboard process responds on 8086, but registration requires restarting that existing process with the new code.

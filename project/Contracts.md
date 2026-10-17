@@ -56,3 +56,13 @@ Financial amounts use `NUMBER(18,2)`; indicator values use `NUMBER(12,4)`. API s
 ## Proposed Service 3 API update 15 October 2026
 
 The initial module-local REST contract is documented in `warning-intervention-service/docs/openapi.json`, with lifecycle defaults and permissions in its README. This records a proposed Service 3 interface for owner review; it does not approve or change MS1/MS2 APIs, event contracts or gateway routing. No upstream HTTP contract is invented. The service currently uses an isolated reference-schema JDBC adapter requiring agreed read access. Identity-provider configuration and shared integration remain pending.
+
+
+## Dashboard service update 17 October 2026
+
+Dashboard module-local interfaces: GET / serves the public HTML shell; POST /api/dashboard/login forwards email/password to the configured local msme-service login; GET /api/dashboard/msmes/{msme_id}?as_of=YYYY-MM requires the existing bearer token and current Oracle role/assignment authorization. The response contains context, all 21 metric evidence values, 48 monthly rows including gaps, saved indicator history and limitations. GET /health is process liveness. No upstream API contracts were changed.
+
+
+## Dashboard Eureka integration 17 October 2026
+
+Dashboard startup now registers dashboard-service with http://localhost:8080/eureka/, advertises DASHBOARD_PORT (8086 by default), sends heartbeats and deregisters on graceful shutdown. DASHBOARD_HOST defaults to localhost; home/status are / and process health is /health. The launcher freezes its listening port before shared configuration loading, keeping registration consistent. No registry-server, gateway, authentication or financial formula changes. All 20 isolated dashboard tests passed, including HTTP registration/deregistration against a test registry and custom-port configuration. The live registry is reachable and the current dashboard process responds on 8086, but registration requires restarting that existing process with the new code.
