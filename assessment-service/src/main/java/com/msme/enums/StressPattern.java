@@ -3,11 +3,15 @@ package com.msme.enums;
 
 public enum StressPattern {
 
-    BROAD_FINANCIAL_DETERIORATION,
+	 BROAD_FINANCIAL_DETERIORATION,
+	    COLLECTION_LIQUIDITY_STRESS,
+	    CREDIT_DEPENDENCY_STRESS,
 
-    COLLECTION_LIQUIDITY_STRESS,
-
-    CREDIT_DEPENDENCY_STRESS;
+	    // Compatibility with existing sample database records.
+	    SEASONAL_DROP,
+	    RECEIVABLE_SPIKE,
+	    CREDIT_OVERUSE,
+	    STABLE_GROWTH;
 
     public static StressPattern determine(
             boolean revenueBreached,

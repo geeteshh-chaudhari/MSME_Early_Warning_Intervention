@@ -1,89 +1,96 @@
-
 package com.msme.security;
 
-import java.util.Map;
+import java.util.List;
+import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.security.core.userdetails.User;
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
-@ConditionalOnProperty(
-    prefix = "msme.security.local-users",
-    name = "enabled",
-    havingValue = "true"
-)
 public class AssessmentUserDetailsService
         implements UserDetailsService {
 
-    private final Map<String, UserDetails> users;
+    private static final Set<String> VALID_ROLES =
+            Set.of("RISK_ADMIN", "RM", "MSME_REP");
+
+    private final NamedParameterJdbcTemplate jdbc;
+    private final String userTable;
 
     public AssessmentUserDetailsService(
-            PasswordEncoder encoder,
-            @Value("${msme.security.admin.username}")
-            String adminUsername,
-            @Value("${msme.security.admin.password}")
-            String adminPassword,
-            @Value("${msme.security.rm.username}")
-            String rmUsername,
-            @Value("${msme.security.rm.password}")
-            String rmPassword) {
+            NamedParameterJdbcTemplate jdbc,
+            @Value("${msme.security.user-table:USER1.APP_USER}")
+            String userTable) {
 
-        if (adminUsername.isBlank()
-                || rmUsername.isBlank()
-                || adminUsername.equals(rmUsername)) {
-            throw new IllegalStateException(
-                "Invalid local API usernames");
+        if (userTable == null
+                || !userTable.matches(
+                    "[A-Za-z][A-Za-z0-9_]*"
+                    + "(\\.[A-Za-z][A-Za-z0-9_]*)?"
+                )) {
+
+            throw new IllegalArgumentException(
+                    "Invalid configured user table"
+            );
         }
 
-        if (adminPassword.isBlank()
-                || rmPassword.isBlank()) {
-            throw new IllegalStateException(
-                "Local API passwords must be configured");
+        this.jdbc = jdbc;
+        this.userTable = userTable;
+    }
+
+    public CustomUserPrincipal loadUserById(Long userId) {
+
+        if (userId == null || userId <= 0) {
+            throw new UsernameNotFoundException(
+                    "User not found"
+            );
         }
 
-        UserDetails admin = User.builder()
-                .username(adminUsername)
-                .password(encoder.encode(adminPassword))
-                .roles("RISK_ADMIN")
-                .build();
+        String sql = """
+                SELECT USER_ID, ROLE, MSME_ID, ACCOUNT_STATUS
+                FROM %s
+                WHERE USER_ID = :userId
+                """.formatted(userTable);
 
-        UserDetails rm = User.builder()
-                .username(rmUsername)
-                .password(encoder.encode(rmPassword))
-                .roles("RM")
-                .build();
-
-        this.users = Map.of(
-                adminUsername, admin,
-                rmUsername, rm
+        List<CustomUserPrincipal> users = jdbc.query(
+                sql,
+                new MapSqlParameterSource("userId", userId),
+                (rs, rowNum) -> new CustomUserPrincipal(
+                        rs.getLong("USER_ID"),
+                        rs.getString("ROLE"),
+                        rs.getObject("MSME_ID", Long.class),
+                        "ACTIVE".equalsIgnoreCase(
+                                rs.getString("ACCOUNT_STATUS")
+                        )
+                )
         );
+
+        if (users.size() != 1) {
+            throw new UsernameNotFoundException(
+                    "User not found"
+            );
+        }
+
+        CustomUserPrincipal principal = users.get(0);
+
+        if (principal.getRole() == null
+                || !VALID_ROLES.contains(principal.getRole())) {
+
+            throw new UsernameNotFoundException(
+                    "User has an invalid role"
+            );
+        }
+
+        return principal;
     }
 
     @Override
-    public UserDetails loadUserByUsername(String username)
-            throws UsernameNotFoundException {
-
-        UserDetails user = users.get(username);
-
-        if (user == null) {
-            throw new UsernameNotFoundException(
-                "API user not found");
-        }
-
-        return new User(
-                user.getUsername(),
-                user.getPassword(),
-                user.isEnabled(),
-                user.isAccountNonExpired(),
-                user.isCredentialsNonExpired(),
-                user.isAccountNonLocked(),
-                user.getAuthorities()
+    public UserDetails loadUserByUsername(String username) {
+        throw new UsernameNotFoundException(
+                "Use the JWT issued by MS1"
         );
     }
 }

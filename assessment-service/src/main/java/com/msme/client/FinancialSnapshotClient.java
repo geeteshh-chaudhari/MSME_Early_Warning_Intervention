@@ -1,88 +1,151 @@
-
 package com.msme.client;
 
+import java.time.LocalDate;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.http.HttpStatusCode;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import com.msme.dto.assessment.AssessmentInputResponse;
 import com.msme.dto.assessment.FinancialSnapshotRequest;
 import com.msme.exception.FinancialServiceUnavailableException;
+import com.msme.exception.InvalidRequestException;
+import com.msme.exception.MsmeServiceException;
+
+import jakarta.validation.Validator;
 
 @Component
 public class FinancialSnapshotClient {
 
     private final RestClient restClient;
+    private final Validator validator;
 
     public FinancialSnapshotClient(
-            @Qualifier("financeRestClient")
-            RestClient restClient) {
+            @Qualifier("financeRestClient") RestClient restClient,
+            Validator validator) {
 
         this.restClient = restClient;
+        this.validator = validator;
     }
 
-    public List<FinancialSnapshotRequest> getLatestThreeSnapshots(
-            Long msmeId) {
+    public List<FinancialSnapshotRequest> getAssessmentSnapshots(
+            Long msmeId,
+            LocalDate reportingPeriod) {
 
         if (msmeId == null || msmeId <= 0) {
-            throw new IllegalArgumentException(
-                    "Valid MSME ID is required");
+            throw new InvalidRequestException(
+                    "Valid MSME ID is required"
+            );
         }
 
+        if (reportingPeriod == null
+                || reportingPeriod.getDayOfMonth() != 1) {
+
+            throw new InvalidRequestException(
+                    "Reporting period must be the first day of a month"
+            );
+        }
+
+        AssessmentInputResponse input;
+
         try {
-
-            FinancialSnapshotRequest[] response =
-                    restClient.get()
-                        .uri(
-                            "/api/msmes/{msmeId}/financial-snapshots/latest-three",
-                            msmeId
-                        )
-                        .retrieve()
-                        .onStatus(
-                            HttpStatusCode::isError,
-                            (request, result) -> {
-                                throw new FinancialServiceUnavailableException(
-                                    "MS1 returned HTTP "
-                                    + result.getStatusCode()
-                                );
-                            }
-                        )
-                        .body(FinancialSnapshotRequest[].class);
-
-            if (response == null || response.length != 3) {
-                throw new FinancialServiceUnavailableException(
-                    "MS1 must return exactly three monthly snapshots"
-                );
-            }
-
-            List<FinancialSnapshotRequest> snapshots =
-                    List.of(response);
-
-            for (FinancialSnapshotRequest snapshot : snapshots) {
-
-                if (snapshot == null
-                        || snapshot.msmeId() == null
-                        || !msmeId.equals(snapshot.msmeId())) {
-
-                    throw new FinancialServiceUnavailableException(
-                        "MS1 returned invalid MSME snapshot data"
-                    );
-                }
-            }
-
-            return snapshots;
-
-        } catch (FinancialServiceUnavailableException ex) {
-            throw ex;
+            input = restClient.get()
+                    .uri(
+                            "/api/assessment-data/msmes/{msmeId}"
+                            + "/input/{reportingPeriod}",
+                            msmeId,
+                            reportingPeriod
+                    )
+                    .retrieve()
+                    .body(AssessmentInputResponse.class);
 
         } catch (RestClientException ex) {
             throw new FinancialServiceUnavailableException(
-                "Financial Data Service is unavailable",
-                ex
+                    "MS1 assessment input could not be retrieved",
+                    ex
             );
         }
+
+        validateInput(input, msmeId, reportingPeriod);
+
+        return input.snapshots()
+                .stream()
+                .sorted(Comparator.comparing(
+                        AssessmentInputResponse.SnapshotResponse
+                                ::reportingPeriod
+                ))
+                .map(snapshot -> new FinancialSnapshotRequest(
+                        snapshot.snapshotId(),
+                        snapshot.msmeId(),
+                        snapshot.reportingPeriod(),
+                        snapshot.revenue(),
+                        snapshot.totalReceivables(),
+                        snapshot.overdueReceivables(),
+                        snapshot.creditUsed(),
+                        input.sanctionedCreditLimit()
+                ))
+                .toList();
+    }
+
+    private void validateInput(
+            AssessmentInputResponse input,
+            Long msmeId,
+            LocalDate reportingPeriod) {
+
+        if (input == null
+                || !validator.validate(input).isEmpty()) {
+
+            throw invalidResponse();
+        }
+
+        if (!msmeId.equals(input.msmeId())
+                || !reportingPeriod.equals(input.reportingPeriod())) {
+
+            throw invalidResponse();
+        }
+
+        Set<LocalDate> expectedPeriods = Set.of(
+                reportingPeriod.minusMonths(2),
+                reportingPeriod.minusMonths(1),
+                reportingPeriod
+        );
+
+        Set<LocalDate> returnedPeriods = new HashSet<>();
+        Set<Long> snapshotIds = new HashSet<>();
+
+        for (var snapshot : input.snapshots()) {
+
+            if (!msmeId.equals(snapshot.msmeId())
+                    || !expectedPeriods.contains(
+                            snapshot.reportingPeriod()
+                    )
+                    || !returnedPeriods.add(
+                            snapshot.reportingPeriod()
+                    )
+                    || !snapshotIds.add(snapshot.snapshotId())
+                    || snapshot.overdueReceivables().compareTo(
+                            snapshot.totalReceivables()
+                    ) > 0) {
+
+                throw invalidResponse();
+            }
+        }
+
+        if (!returnedPeriods.equals(expectedPeriods)) {
+            throw invalidResponse();
+        }
+    }
+
+    private MsmeServiceException invalidResponse() {
+        return new MsmeServiceException(
+                HttpStatus.BAD_GATEWAY,
+                "MS1 returned invalid assessment input"
+        );
     }
 }

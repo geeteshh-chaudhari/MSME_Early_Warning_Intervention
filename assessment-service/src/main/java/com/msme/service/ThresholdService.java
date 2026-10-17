@@ -1,4 +1,3 @@
-
 package com.msme.service;
 
 import java.time.LocalDateTime;
@@ -8,6 +7,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.msme.client.MsmeAccessClient;
 import com.msme.dto.threshold.CreateThresholdRequest;
 import com.msme.dto.threshold.ReviewThresholdRequest;
 import com.msme.dto.threshold.ThresholdResponse;
@@ -21,10 +21,14 @@ import com.msme.repository.ThresholdConfigRepository;
 public class ThresholdService {
 
     private final ThresholdConfigRepository repository;
+    private final MsmeAccessClient msmeAccessClient;
 
     public ThresholdService(
-            ThresholdConfigRepository repository) {
+            ThresholdConfigRepository repository,
+            MsmeAccessClient msmeAccessClient) {
+
         this.repository = repository;
+        this.msmeAccessClient = msmeAccessClient;
     }
 
     @Transactional
@@ -34,25 +38,32 @@ public class ThresholdService {
 
         if (adminUserId == null || adminUserId <= 0) {
             throw new InvalidRequestException(
-                    "Valid Risk Admin user ID is required");
+                    "Valid Risk Admin user ID is required"
+            );
         }
 
-        if (request == null || request.msmeId() == null
+        if (request == null
+                || request.msmeId() == null
                 || request.msmeId() <= 0
                 || request.revenueDeclinePct() == null
                 || request.overdueReceivablePct() == null
                 || request.creditUtilisationPct() == null) {
+
             throw new InvalidRequestException(
-                    "Complete threshold request is required");
+                    "Complete threshold request is required"
+            );
         }
 
+        msmeAccessClient.checkAccess(request.msmeId());
+
         int version = repository.findNextVersion(
-                request.msmeId());
+                request.msmeId()
+        );
 
         LocalDateTime effectiveFrom =
                 request.effectiveFrom() == null
-                    ? LocalDateTime.now()
-                    : request.effectiveFrom();
+                        ? LocalDateTime.now()
+                        : request.effectiveFrom();
 
         ThresholdConfig proposal = new ThresholdConfig(
                 null,
@@ -72,12 +83,14 @@ public class ThresholdService {
 
         try {
             Long id = repository.save(proposal);
+
             return getById(id);
+
         } catch (DataIntegrityViolationException ex) {
             throw new InvalidRequestException(
-                "Threshold proposal conflicts with an existing "
-                + "version or referenced MSME/user record",
-                ex
+                    "Threshold proposal conflicts with an existing "
+                            + "version or referenced MSME/user record",
+                    ex
             );
         }
     }
@@ -90,29 +103,40 @@ public class ThresholdService {
 
         if (adminUserId == null || adminUserId <= 0) {
             throw new InvalidRequestException(
-                    "Valid Risk Admin user ID is required");
+                    "Valid Risk Admin user ID is required"
+            );
         }
 
-        if (request == null || request.decision() == null
+        if (request == null
+                || request.decision() == null
                 || request.reason() == null
                 || request.reason().isBlank()) {
+
             throw new InvalidRequestException(
-                    "Review decision and reason are required");
+                    "Review decision and reason are required"
+            );
         }
 
         if (request.decision() == ThresholdStatus.PENDING) {
             throw new InvalidRequestException(
-                    "Review decision must be APPROVED or REJECTED");
+                    "Review decision must be APPROVED or REJECTED"
+            );
         }
 
         ThresholdConfig existing = repository.findById(id)
                 .orElseThrow(() ->
-                    new ResourceNotFoundException(
-                            "Threshold", id));
+                        new ResourceNotFoundException(
+                                "Threshold",
+                                id
+                        )
+                );
+
+        msmeAccessClient.checkAccess(existing.msmeId());
 
         if (!existing.isPending()) {
             throw new InvalidRequestException(
-                    "Only PENDING thresholds can be reviewed");
+                    "Only PENDING thresholds can be reviewed"
+            );
         }
 
         int updated = repository.review(
@@ -124,7 +148,8 @@ public class ThresholdService {
 
         if (updated != 1) {
             throw new InvalidRequestException(
-                    "Threshold has already been reviewed");
+                    "Threshold has already been reviewed"
+            );
         }
 
         return getById(id);
@@ -135,8 +160,13 @@ public class ThresholdService {
 
         ThresholdConfig threshold = repository.findById(id)
                 .orElseThrow(() ->
-                    new ResourceNotFoundException(
-                            "Threshold", id));
+                        new ResourceNotFoundException(
+                                "Threshold",
+                                id
+                        )
+                );
+
+        msmeAccessClient.checkAccess(threshold.msmeId());
 
         return toResponse(threshold);
     }
@@ -149,7 +179,10 @@ public class ThresholdService {
 
         validatePagination(page, size);
 
-        return repository.findByMsmeId(msmeId, page, size)
+        msmeAccessClient.checkAccess(msmeId);
+
+        return repository
+                .findByMsmeId(msmeId, page, size)
                 .stream()
                 .map(this::toResponse)
                 .toList();
@@ -160,42 +193,54 @@ public class ThresholdService {
             Long msmeId,
             LocalDateTime asOf) {
 
-        return repository.findLatestApprovedEffective(
-                    msmeId, asOf)
+        msmeAccessClient.checkAccess(msmeId);
+
+        return repository
+                .findLatestApprovedEffective(msmeId, asOf)
                 .orElseThrow(() ->
-                    new InvalidRequestException(
-                        "No approved effective threshold "
-                        + "exists for MSME " + msmeId));
+                        new InvalidRequestException(
+                                "No approved effective threshold "
+                                        + "exists for MSME "
+                                        + msmeId
+                        )
+                );
     }
 
     public long countHistory(Long msmeId) {
+
+        msmeAccessClient.checkAccess(msmeId);
+
         return repository.countByMsmeId(msmeId);
     }
 
-    private void validatePagination(int page, int size) {
+    private void validatePagination(
+            int page,
+            int size) {
+
         if (page < 0 || size < 1 || size > 100) {
             throw new InvalidRequestException(
-                    "Page must be >= 0 and size must be 1-100");
+                    "Page must be >= 0 and size must be 1-100"
+            );
         }
     }
 
     private ThresholdResponse toResponse(
-            ThresholdConfig t) {
+            ThresholdConfig threshold) {
 
         return new ThresholdResponse(
-                t.thresholdConfigId(),
-                t.msmeId(),
-                t.versionNo(),
-                t.revenueDeclinePct(),
-                t.overdueReceivablePct(),
-                t.creditUtilisationPct(),
-                t.status(),
-                t.proposedByUserId(),
-                t.proposedAt(),
-                t.reviewedByUserId(),
-                t.reviewedAt(),
-                t.reviewReason(),
-                t.effectiveFrom()
+                threshold.thresholdConfigId(),
+                threshold.msmeId(),
+                threshold.versionNo(),
+                threshold.revenueDeclinePct(),
+                threshold.overdueReceivablePct(),
+                threshold.creditUtilisationPct(),
+                threshold.status(),
+                threshold.proposedByUserId(),
+                threshold.proposedAt(),
+                threshold.reviewedByUserId(),
+                threshold.reviewedAt(),
+                threshold.reviewReason(),
+                threshold.effectiveFrom()
         );
     }
 }
