@@ -1,26 +1,32 @@
-
 package com.msme.controller;
 
 import java.util.List;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
+import org.springframework.security.core.Authentication;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.msme.dto.threshold.CreateThresholdRequest;
+import com.msme.dto.threshold.ReviewThresholdRequest;
+import com.msme.dto.threshold.ThresholdResponse;
+import com.msme.security.CustomUserPrincipal;
+import com.msme.service.ThresholdService;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
-
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.Authentication;
-import org.springframework.validation.annotation.Validated;
-import org.springframework.web.bind.annotation.*;
-
-import com.msme.dto.threshold.CreateThresholdRequest;
-import com.msme.dto.threshold.ReviewThresholdRequest;
-import com.msme.dto.threshold.ThresholdResponse;
-import com.msme.exception.InvalidRequestException;
-import com.msme.service.ThresholdService;
 
 @RestController
 @RequestMapping("/api/assessment")
@@ -29,19 +35,10 @@ public class ThresholdController {
 
     private final ThresholdService thresholdService;
 
-    private final String adminUsername;
-    private final Long adminUserId;
-
     public ThresholdController(
-            ThresholdService thresholdService,
-            @Value("${msme.security.admin.username}")
-            String adminUsername,
-            @Value("${msme.security.admin.user-id}")
-            Long adminUserId) {
+            ThresholdService thresholdService) {
 
         this.thresholdService = thresholdService;
-        this.adminUsername = adminUsername;
-        this.adminUserId = adminUserId;
     }
 
     @PostMapping("/thresholds")
@@ -52,8 +49,10 @@ public class ThresholdController {
 
         Long userId = resolveAdminUserId(authentication);
 
-        ThresholdResponse response =
-                thresholdService.create(request, userId);
+        ThresholdResponse response = thresholdService.create(
+                request,
+                userId
+        );
 
         return ResponseEntity
                 .status(HttpStatus.CREATED)
@@ -69,8 +68,11 @@ public class ThresholdController {
 
         Long userId = resolveAdminUserId(authentication);
 
-        ThresholdResponse response =
-                thresholdService.review(id, request, userId);
+        ThresholdResponse response = thresholdService.review(
+                id,
+                request,
+                userId
+        );
 
         return ResponseEntity.ok(response);
     }
@@ -89,13 +91,19 @@ public class ThresholdController {
     @PreAuthorize("hasAnyRole('RISK_ADMIN', 'RM')")
     public ResponseEntity<List<ThresholdResponse>> getHistory(
             @PathVariable @Positive Long msmeId,
+
             @RequestParam(defaultValue = "0")
             @Min(0) int page,
+
             @RequestParam(defaultValue = "10")
             @Min(1) @Max(100) int size) {
 
         return ResponseEntity.ok(
-                thresholdService.getHistory(msmeId, page, size)
+                thresholdService.getHistory(
+                        msmeId,
+                        page,
+                        size
+                )
         );
     }
 
@@ -103,17 +111,21 @@ public class ThresholdController {
             Authentication authentication) {
 
         if (authentication == null
-                || !authentication.isAuthenticated()) {
-            throw new InvalidRequestException(
-                    "Authenticated Risk Admin is required");
+                || !authentication.isAuthenticated()
+                || !(authentication.getPrincipal()
+                    instanceof CustomUserPrincipal principal)) {
+
+            throw new AuthenticationCredentialsNotFoundException(
+                    "JWT authentication is required"
+            );
         }
 
-        if (!adminUsername.equals(authentication.getName())) {
-            throw new InvalidRequestException(
-                    "Authenticated user has no configured "
-                    + "APP_USER audit mapping");
+        if (!"RISK_ADMIN".equals(principal.getRole())) {
+            throw new AccessDeniedException(
+                    "Risk Admin access is required"
+            );
         }
 
-        return adminUserId;
+        return principal.getUserId();
     }
 }

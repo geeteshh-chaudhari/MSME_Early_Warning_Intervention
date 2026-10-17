@@ -1,8 +1,7 @@
-
 package com.msme.service;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
@@ -11,13 +10,23 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import com.msme.calculator.AssessmentCalculator;
 import com.msme.calculator.AssessmentCalculationResult;
+import com.msme.calculator.AssessmentCalculator;
 import com.msme.client.FinancialSnapshotClient;
-import com.msme.dto.assessment.*;
-import com.msme.entity.*;
-import com.msme.exception.*;
-import com.msme.repository.*;
+import com.msme.client.MsmeAccessClient;
+import com.msme.dto.assessment.AssessmentFromFinanceRequest;
+import com.msme.dto.assessment.AssessmentResponse;
+import com.msme.dto.assessment.CreateAssessmentRequest;
+import com.msme.dto.assessment.FinancialSnapshotRequest;
+import com.msme.dto.assessment.IndicatorResultResponse;
+import com.msme.entity.AssessmentIndicatorResult;
+import com.msme.entity.RiskAssessment;
+import com.msme.entity.ThresholdConfig;
+import com.msme.exception.DuplicateAssessmentException;
+import com.msme.exception.InvalidRequestException;
+import com.msme.exception.ResourceNotFoundException;
+import com.msme.repository.AssessmentIndicatorResultRepository;
+import com.msme.repository.RiskAssessmentRepository;
 
 @Service
 public class AssessmentService {
@@ -28,6 +37,7 @@ public class AssessmentService {
     private final RiskAssessmentRepository assessmentRepository;
     private final AssessmentIndicatorResultRepository indicatorRepository;
     private final TransactionTemplate transactionTemplate;
+    private final MsmeAccessClient msmeAccessClient;
 
     public AssessmentService(
             AssessmentCalculator calculator,
@@ -35,7 +45,8 @@ public class AssessmentService {
             ThresholdService thresholdService,
             RiskAssessmentRepository assessmentRepository,
             AssessmentIndicatorResultRepository indicatorRepository,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager,
+            MsmeAccessClient msmeAccessClient) {
 
         this.calculator = calculator;
         this.financeClient = financeClient;
@@ -44,69 +55,90 @@ public class AssessmentService {
         this.indicatorRepository = indicatorRepository;
         this.transactionTemplate =
                 new TransactionTemplate(transactionManager);
+        this.msmeAccessClient = msmeAccessClient;
     }
 
     public AssessmentResponse create(
             CreateAssessmentRequest request) {
 
-        if (request == null || request.msmeId() == null
+        if (request == null
+                || request.msmeId() == null
                 || request.msmeId() <= 0
                 || request.snapshots() == null
                 || request.snapshots().size() != 3) {
+
             throw new InvalidRequestException(
-                    "Exactly three snapshots and a valid MSME ID are required");
+                    "Exactly three snapshots and a valid MSME ID are required"
+            );
         }
 
+        // Authorize before calculation or returning an existing result.
+        msmeAccessClient.checkAccess(request.msmeId());
+
         List<AssessmentCalculator.Snapshot> snapshots =
-                request.snapshots().stream()
-                    .map(this::toCalculatorSnapshot)
-                    .toList();
+                request.snapshots()
+                        .stream()
+                        .map(this::toCalculatorSnapshot)
+                        .toList();
 
         for (AssessmentCalculator.Snapshot snapshot : snapshots) {
+
             if (!Objects.equals(
-                    request.msmeId(), snapshot.msmeId())) {
+                    request.msmeId(),
+                    snapshot.msmeId())) {
+
                 throw new InvalidRequestException(
-                        "All snapshots must belong to the requested MSME");
+                        "All snapshots must belong to the requested MSME"
+                );
             }
         }
 
         AssessmentCalculator.Snapshot current = snapshots
                 .stream()
-                .max(java.util.Comparator.comparing(
-                        AssessmentCalculator.Snapshot::reportingPeriod))
+                .max(Comparator.comparing(
+                        AssessmentCalculator.Snapshot::reportingPeriod
+                ))
                 .orElseThrow();
 
         // Existing result is returned without recalculation.
         var existing = assessmentRepository.findBySnapshotId(
-                current.snapshotId());
+                current.snapshotId()
+        );
 
         if (existing.isPresent()) {
+
             if (!existing.get().msmeId().equals(request.msmeId())) {
                 throw new DuplicateAssessmentException(
-                        "Snapshot belongs to a different MSME");
+                        "Snapshot belongs to a different MSME"
+                );
             }
+
             return getById(existing.get().assessmentId());
         }
 
         ThresholdConfig threshold =
                 thresholdService.getEffectiveThreshold(
-                    request.msmeId(),
-                    LocalDateTime.now()
+                        request.msmeId(),
+                        LocalDateTime.now()
                 );
 
         AssessmentCalculator.Thresholds limits =
                 new AssessmentCalculator.Thresholds(
-                    threshold.revenueDeclinePct(),
-                    threshold.overdueReceivablePct(),
-                    threshold.creditUtilisationPct()
+                        threshold.revenueDeclinePct(),
+                        threshold.overdueReceivablePct(),
+                        threshold.creditUtilisationPct()
                 );
 
         AssessmentCalculationResult calculated;
 
         try {
             calculated = calculator.calculate(snapshots, limits);
+
         } catch (IllegalArgumentException ex) {
-            throw new InvalidRequestException(ex.getMessage(), ex);
+            throw new InvalidRequestException(
+                    ex.getMessage(),
+                    ex
+            );
         }
 
         try {
@@ -141,19 +173,19 @@ public class AssessmentService {
 
                 List<AssessmentIndicatorResult> results =
                         calculated.indicators()
-                            .stream()
-                            .map(indicator ->
-                                new AssessmentIndicatorResult(
-                                    null,
-                                    newId,
-                                    indicator.indicatorCode(),
-                                    indicator.calculatedValue(),
-                                    indicator.thresholdValue(),
-                                    indicator.breached(),
-                                    indicator.explanation()
+                                .stream()
+                                .map(indicator ->
+                                        new AssessmentIndicatorResult(
+                                                null,
+                                                newId,
+                                                indicator.indicatorCode(),
+                                                indicator.calculatedValue(),
+                                                indicator.thresholdValue(),
+                                                indicator.breached(),
+                                                indicator.explanation()
+                                        )
                                 )
-                            )
-                            .toList();
+                                .toList();
 
                 indicatorRepository.saveAll(results);
 
@@ -162,18 +194,19 @@ public class AssessmentService {
 
             if (assessmentId == null) {
                 throw new IllegalStateException(
-                        "Assessment transaction returned no ID");
+                        "Assessment transaction returned no ID"
+                );
             }
 
             return getById(assessmentId);
 
         } catch (DataIntegrityViolationException ex) {
 
-            // The failed transaction has completed/rolled back.
-            // Oracle's unique snapshot constraint protects
-            // against concurrent duplicate inserts.
+            // The failed transaction has completed or rolled back.
+            // The unique snapshot constraint prevents duplicate inserts.
             var duplicate = assessmentRepository.findBySnapshotId(
-                    current.snapshotId());
+                    current.snapshotId()
+            );
 
             if (duplicate.isPresent()) {
                 return getById(duplicate.get().assessmentId());
@@ -181,7 +214,7 @@ public class AssessmentService {
 
             throw new InvalidRequestException(
                     "Assessment could not be saved due to "
-                    + "a database constraint violation",
+                            + "a database constraint violation",
                     ex
             );
         }
@@ -190,15 +223,24 @@ public class AssessmentService {
     public AssessmentResponse createFromFinance(
             AssessmentFromFinanceRequest request) {
 
-        if (request == null || request.msmeId() == null
-                || request.msmeId() <= 0) {
+        if (request == null
+                || request.msmeId() == null
+                || request.msmeId() <= 0
+                || request.reportingPeriod() == null
+                || request.reportingPeriod().getDayOfMonth() != 1) {
+
             throw new InvalidRequestException(
-                    "Valid MSME ID is required");
+                    "Valid MSME ID and first-of-month "
+                            + "reporting period are required"
+            );
         }
 
+        // MS1's assessment-input endpoint also validates MSME access.
         List<FinancialSnapshotRequest> snapshots =
-                financeClient.getLatestThreeSnapshots(
-                    request.msmeId());
+                financeClient.getAssessmentSnapshots(
+                        request.msmeId(),
+                        request.reportingPeriod()
+                );
 
         return create(new CreateAssessmentRequest(
                 request.msmeId(),
@@ -208,14 +250,96 @@ public class AssessmentService {
 
     public AssessmentResponse getById(Long id) {
 
-        RiskAssessment assessment =
-                assessmentRepository.findById(id)
-                    .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "Assessment", id));
+        RiskAssessment assessment = getAssessmentOrThrow(id);
 
-        List<IndicatorResultResponse> indicators =
-                getIndicators(id);
+        msmeAccessClient.checkAccess(assessment.msmeId());
+
+        return toAssessmentResponse(assessment);
+    }
+
+    public List<IndicatorResultResponse> getIndicators(
+            Long assessmentId) {
+
+        RiskAssessment assessment =
+                getAssessmentOrThrow(assessmentId);
+
+        msmeAccessClient.checkAccess(assessment.msmeId());
+
+        return loadIndicators(assessmentId);
+    }
+
+    public AssessmentResponse getLatest(Long msmeId) {
+
+        msmeAccessClient.checkAccess(msmeId);
+
+        RiskAssessment assessment = assessmentRepository
+                .findLatestByMsmeId(msmeId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Latest assessment for MSME",
+                                msmeId
+                        )
+                );
+
+        return toAssessmentResponse(assessment);
+    }
+
+    public List<AssessmentResponse> getHistory(
+            Long msmeId,
+            int page,
+            int size) {
+
+        if (page < 0 || size < 1 || size > 100) {
+            throw new InvalidRequestException(
+                    "Page must be >= 0 and size must be 1-100"
+            );
+        }
+
+        msmeAccessClient.checkAccess(msmeId);
+
+        return assessmentRepository
+                .findHistory(msmeId, page, size)
+                .stream()
+                .map(this::toAssessmentResponse)
+                .toList();
+    }
+
+    public long countHistory(Long msmeId) {
+
+        msmeAccessClient.checkAccess(msmeId);
+
+        return assessmentRepository.countByMsmeId(msmeId);
+    }
+
+    private RiskAssessment getAssessmentOrThrow(Long id) {
+
+        if (id == null || id <= 0) {
+            throw new InvalidRequestException(
+                    "Valid assessment ID is required"
+            );
+        }
+
+        return assessmentRepository.findById(id)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Assessment",
+                                id
+                        )
+                );
+    }
+
+    private List<IndicatorResultResponse> loadIndicators(
+            Long assessmentId) {
+
+        return indicatorRepository
+                .findByAssessmentId(assessmentId)
+                .stream()
+                .map(this::toIndicatorResponse)
+                .toList();
+    }
+
+    private AssessmentResponse toAssessmentResponse(
+            RiskAssessment assessment) {
 
         return new AssessmentResponse(
                 assessment.assessmentId(),
@@ -226,75 +350,28 @@ public class AssessmentService {
                 assessment.severity(),
                 assessment.stressPattern(),
                 assessment.previousAssessmentId(),
-                indicators
+                loadIndicators(assessment.assessmentId())
         );
     }
 
-    public List<IndicatorResultResponse> getIndicators(
-            Long assessmentId) {
-
-        if (assessmentRepository.findById(assessmentId).isEmpty()) {
-            throw new ResourceNotFoundException(
-                    "Assessment", assessmentId);
-        }
-
-        return indicatorRepository
-                .findByAssessmentId(assessmentId)
-                .stream()
-                .map(this::toIndicatorResponse)
-                .toList();
-    }
-
-    public AssessmentResponse getLatest(Long msmeId) {
-
-        RiskAssessment assessment =
-                assessmentRepository.findLatestByMsmeId(msmeId)
-                    .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "Latest assessment for MSME",
-                                msmeId));
-
-        return getById(assessment.assessmentId());
-    }
-
-    public List<AssessmentResponse> getHistory(
-            Long msmeId,
-            int page,
-            int size) {
-
-        if (page < 0 || size < 1 || size > 100) {
-            throw new InvalidRequestException(
-                    "Page must be >= 0 and size must be 1-100");
-        }
-
-        return assessmentRepository
-                .findHistory(msmeId, page, size)
-                .stream()
-                .map(a -> getById(a.assessmentId()))
-                .toList();
-    }
-
-    public long countHistory(Long msmeId) {
-        return assessmentRepository.countByMsmeId(msmeId);
-    }
-
     private AssessmentCalculator.Snapshot toCalculatorSnapshot(
-            FinancialSnapshotRequest s) {
+            FinancialSnapshotRequest snapshot) {
 
-        if (s == null) {
+        if (snapshot == null) {
             throw new InvalidRequestException(
-                    "Snapshot cannot be null");
+                    "Snapshot cannot be null"
+            );
         }
 
         return new AssessmentCalculator.Snapshot(
-                s.snapshotId(),
-                s.msmeId(),
-                s.reportingPeriod(),
-                s.revenue(),
-                s.totalReceivables(),
-                s.overdueReceivables(),
-                s.creditUsed(),
-                s.sanctionedCreditLimit()
+                snapshot.snapshotId(),
+                snapshot.msmeId(),
+                snapshot.reportingPeriod(),
+                snapshot.revenue(),
+                snapshot.totalReceivables(),
+                snapshot.overdueReceivables(),
+                snapshot.creditUsed(),
+                snapshot.sanctionedCreditLimit()
         );
     }
 

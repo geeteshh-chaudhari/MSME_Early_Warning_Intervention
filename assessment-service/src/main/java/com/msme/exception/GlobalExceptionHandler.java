@@ -2,6 +2,8 @@
 package com.msme.exception;
 
 import java.time.LocalDateTime;
+import org.springframework.security.core.AuthenticationException;
+import jakarta.validation.ConstraintViolationException;
 import java.util.List;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -17,6 +19,48 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(MsmeServiceException.class)
+    public ResponseEntity<ErrorResponse> handleMsmeService(
+            MsmeServiceException ex,
+            HttpServletRequest request) {
+
+        return buildResponse(
+                ex.getStatus(), ex.getMessage(), request, List.of()
+        );
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<ErrorResponse> handleAuthentication(
+            AuthenticationException ex,
+            HttpServletRequest request) {
+
+        return buildResponse(
+                HttpStatus.UNAUTHORIZED,
+                "JWT authentication is required or has expired",
+                request,
+                List.of()
+        );
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ErrorResponse> handleConstraintViolation(
+            ConstraintViolationException ex,
+            HttpServletRequest request) {
+
+        List<String> details = ex.getConstraintViolations()
+                .stream()
+                .map(violation -> violation.getPropertyPath()
+                        + ": " + violation.getMessage())
+                .toList();
+
+        return buildResponse(
+                HttpStatus.BAD_REQUEST,
+                "Request validation failed",
+                request,
+                details
+        );
+    }
 
     @ExceptionHandler({
         InvalidRequestException.class,
