@@ -1,0 +1,377 @@
+{
+  "batch": "SEED26",
+  "first_month": "2022-10-01",
+  "last_month": "2026-09-01",
+  "months_per_business": 48,
+  "counts": {
+    "app_user": 62,
+    "msme": 50,
+    "threshold_config": 200,
+    "financial_snapshot": 2400,
+    "risk_assessment": 2400,
+    "assessment_indicator_result": 7200,
+    "warning": 93,
+    "intervention": 250,
+    "follow_up_review": 982,
+    "activity_log": 6343
+  },
+  "scenarios": {
+    "steady_growth": 10,
+    "seasonal": 10,
+    "declining": 10,
+    "collections_stress": 10,
+    "recovery": 10
+  },
+  "businesses": [
+    {
+      "business_code": "SEED26-001",
+      "business_name": "SEED26 - Demo Business 001",
+      "scenario": "steady_growth",
+      "rm_email": "seed26.rm01@example.test",
+      "representative_email": "seed26.rep001@example.test"
+    },
+    {
+      "business_code": "SEED26-002",
+      "business_name": "SEED26 - Demo Business 002",
+      "scenario": "seasonal",
+      "rm_email": "seed26.rm02@example.test",
+      "representative_email": "seed26.rep002@example.test"
+    },
+    {
+      "business_code": "SEED26-003",
+      "business_name": "SEED26 - Demo Business 003",
+      "scenario": "declining",
+      "rm_email": "seed26.rm03@example.test",
+      "representative_email": "seed26.rep003@example.test"
+    },
+    {
+      "business_code": "SEED26-004",
+      "business_name": "SEED26 - Demo Business 004",
+      "scenario": "collections_stress",
+      "rm_email": "seed26.rm04@example.test",
+      "representative_email": "seed26.rep004@example.test"
+    },
+    {
+      "business_code": "SEED26-005",
+      "business_name": "SEED26 - Demo Business 005",
+      "scenario": "recovery",
+      "rm_email": "seed26.rm05@example.test",
+      "representative_email": "seed26.rep005@example.test"
+    },
+    {
+      "business_code": "SEED26-006",
+      "business_name": "SEED26 - Demo Business 006",
+      "scenario": "steady_growth",
+      "rm_email": "seed26.rm06@example.test",
+      "representative_email": "seed26.rep006@example.test"
+    },
+    {
+      "business_code": "SEED26-007",
+      "business_name": "SEED26 - Demo Business 007",
+      "scenario": "seasonal",
+      "rm_email": "seed26.rm07@example.test",
+      "representative_email": "seed26.rep007@example.test"
+    },
+    {
+      "business_code": "SEED26-008",
+      "business_name": "SEED26 - Demo Business 008",
+      "scenario": "declining",
+      "rm_email": "seed26.rm08@example.test",
+      "representative_email": "seed26.rep008@example.test"
+    },
+    {
+      "business_code": "SEED26-009",
+      "business_name": "SEED26 - Demo Business 009",
+      "scenario": "collections_stress",
+      "rm_email": "seed26.rm09@example.test",
+      "representative_email": "seed26.rep009@example.test"
+    },
+    {
+      "business_code": "SEED26-010",
+      "business_name": "SEED26 - Demo Business 010",
+      "scenario": "recovery",
+      "rm_email": "seed26.rm10@example.test",
+      "representative_email": "seed26.rep010@example.test"
+    },
+    {
+      "business_code": "SEED26-011",
+      "business_name": "SEED26 - Demo Business 011",
+      "scenario": "steady_growth",
+      "rm_email": "seed26.rm01@example.test",
+      "representative_email": "seed26.rep011@example.test"
+    },
+    {
+      "business_code": "SEED26-012",
+      "business_name": "SEED26 - Demo Business 012",
+      "scenario": "seasonal",
+      "rm_email": "seed26.rm02@example.test",
+      "representative_email": "seed26.rep012@example.test"
+    },
+    {
+      "business_code": "SEED26-013",
+      "business_name": "SEED26 - Demo Business 013",
+      "scenario": "declining",
+      "rm_email": "seed26.rm03@example.test",
+      "representative_email": "seed26.rep013@example.test"
+    },
+    {
+      "business_code": "SEED26-014",
+      "business_name": "SEED26 - Demo Business 014",
+      "scenario": "collections_stress",
+      "rm_email": "seed26.rm04@example.test",
+      "representative_email": "seed26.rep014@example.test"
+    },
+    {
+      "business_code": "SEED26-015",
+      "business_name": "SEED26 - Demo Business 015",
+      "scenario": "recovery",
+      "rm_email": "seed26.rm05@example.test",
+      "representative_email": "seed26.rep015@example.test"
+    },
+    {
+      "business_code": "SEED26-016",
+      "business_name": "SEED26 - Demo Business 016",
+      "scenario": "steady_growth",
+      "rm_email": "seed26.rm06@example.test",
+      "representative_email": "seed26.rep016@example.test"
+    },
+    {
+      "business_code": "SEED26-017",
+      "business_name": "SEED26 - Demo Business 017",
+      "scenario": "seasonal",
+      "rm_email": "seed26.rm07@example.test",
+      "representative_email": "seed26.rep017@example.test"
+    },
+    {
+      "business_code": "SEED26-018",
+      "business_name": "SEED26 - Demo Business 018",
+      "scenario": "declining",
+      "rm_email": "seed26.rm08@example.test",
+      "representative_email": "seed26.rep018@example.test"
+    },
+    {
+      "business_code": "SEED26-019",
+      "business_name": "SEED26 - Demo Business 019",
+      "scenario": "collections_stress",
+      "rm_email": "seed26.rm09@example.test",
+      "representative_email": "seed26.rep019@example.test"
+    },
+    {
+      "business_code": "SEED26-020",
+      "business_name": "SEED26 - Demo Business 020",
+      "scenario": "recovery",
+      "rm_email": "seed26.rm10@example.test",
+      "representative_email": "seed26.rep020@example.test"
+    },
+    {
+      "business_code": "SEED26-021",
+      "business_name": "SEED26 - Demo Business 021",
+      "scenario": "steady_growth",
+      "rm_email": "seed26.rm01@example.test",
+      "representative_email": "seed26.rep021@example.test"
+    },
+    {
+      "business_code": "SEED26-022",
+      "business_name": "SEED26 - Demo Business 022",
+      "scenario": "seasonal",
+      "rm_email": "seed26.rm02@example.test",
+      "representative_email": "seed26.rep022@example.test"
+    },
+    {
+      "business_code": "SEED26-023",
+      "business_name": "SEED26 - Demo Business 023",
+      "scenario": "declining",
+      "rm_email": "seed26.rm03@example.test",
+      "representative_email": "seed26.rep023@example.test"
+    },
+    {
+      "business_code": "SEED26-024",
+      "business_name": "SEED26 - Demo Business 024",
+      "scenario": "collections_stress",
+      "rm_email": "seed26.rm04@example.test",
+      "representative_email": "seed26.rep024@example.test"
+    },
+    {
+      "business_code": "SEED26-025",
+      "business_name": "SEED26 - Demo Business 025",
+      "scenario": "recovery",
+      "rm_email": "seed26.rm05@example.test",
+      "representative_email": "seed26.rep025@example.test"
+    },
+    {
+      "business_code": "SEED26-026",
+      "business_name": "SEED26 - Demo Business 026",
+      "scenario": "steady_growth",
+      "rm_email": "seed26.rm06@example.test",
+      "representative_email": "seed26.rep026@example.test"
+    },
+    {
+      "business_code": "SEED26-027",
+      "business_name": "SEED26 - Demo Business 027",
+      "scenario": "seasonal",
+      "rm_email": "seed26.rm07@example.test",
+      "representative_email": "seed26.rep027@example.test"
+    },
+    {
+      "business_code": "SEED26-028",
+      "business_name": "SEED26 - Demo Business 028",
+      "scenario": "declining",
+      "rm_email": "seed26.rm08@example.test",
+      "representative_email": "seed26.rep028@example.test"
+    },
+    {
+      "business_code": "SEED26-029",
+      "business_name": "SEED26 - Demo Business 029",
+      "scenario": "collections_stress",
+      "rm_email": "seed26.rm09@example.test",
+      "representative_email": "seed26.rep029@example.test"
+    },
+    {
+      "business_code": "SEED26-030",
+      "business_name": "SEED26 - Demo Business 030",
+      "scenario": "recovery",
+      "rm_email": "seed26.rm10@example.test",
+      "representative_email": "seed26.rep030@example.test"
+    },
+    {
+      "business_code": "SEED26-031",
+      "business_name": "SEED26 - Demo Business 031",
+      "scenario": "steady_growth",
+      "rm_email": "seed26.rm01@example.test",
+      "representative_email": "seed26.rep031@example.test"
+    },
+    {
+      "business_code": "SEED26-032",
+      "business_name": "SEED26 - Demo Business 032",
+      "scenario": "seasonal",
+      "rm_email": "seed26.rm02@example.test",
+      "representative_email": "seed26.rep032@example.test"
+    },
+    {
+      "business_code": "SEED26-033",
+      "business_name": "SEED26 - Demo Business 033",
+      "scenario": "declining",
+      "rm_email": "seed26.rm03@example.test",
+      "representative_email": "seed26.rep033@example.test"
+    },
+    {
+      "business_code": "SEED26-034",
+      "business_name": "SEED26 - Demo Business 034",
+      "scenario": "collections_stress",
+      "rm_email": "seed26.rm04@example.test",
+      "representative_email": "seed26.rep034@example.test"
+    },
+    {
+      "business_code": "SEED26-035",
+      "business_name": "SEED26 - Demo Business 035",
+      "scenario": "recovery",
+      "rm_email": "seed26.rm05@example.test",
+      "representative_email": "seed26.rep035@example.test"
+    },
+    {
+      "business_code": "SEED26-036",
+      "business_name": "SEED26 - Demo Business 036",
+      "scenario": "steady_growth",
+      "rm_email": "seed26.rm06@example.test",
+      "representative_email": "seed26.rep036@example.test"
+    },
+    {
+      "business_code": "SEED26-037",
+      "business_name": "SEED26 - Demo Business 037",
+      "scenario": "seasonal",
+      "rm_email": "seed26.rm07@example.test",
+      "representative_email": "seed26.rep037@example.test"
+    },
+    {
+      "business_code": "SEED26-038",
+      "business_name": "SEED26 - Demo Business 038",
+      "scenario": "declining",
+      "rm_email": "seed26.rm08@example.test",
+      "representative_email": "seed26.rep038@example.test"
+    },
+    {
+      "business_code": "SEED26-039",
+      "business_name": "SEED26 - Demo Business 039",
+      "scenario": "collections_stress",
+      "rm_email": "seed26.rm09@example.test",
+      "representative_email": "seed26.rep039@example.test"
+    },
+    {
+      "business_code": "SEED26-040",
+      "business_name": "SEED26 - Demo Business 040",
+      "scenario": "recovery",
+      "rm_email": "seed26.rm10@example.test",
+      "representative_email": "seed26.rep040@example.test"
+    },
+    {
+      "business_code": "SEED26-041",
+      "business_name": "SEED26 - Demo Business 041",
+      "scenario": "steady_growth",
+      "rm_email": "seed26.rm01@example.test",
+      "representative_email": "seed26.rep041@example.test"
+    },
+    {
+      "business_code": "SEED26-042",
+      "business_name": "SEED26 - Demo Business 042",
+      "scenario": "seasonal",
+      "rm_email": "seed26.rm02@example.test",
+      "representative_email": "seed26.rep042@example.test"
+    },
+    {
+      "business_code": "SEED26-043",
+      "business_name": "SEED26 - Demo Business 043",
+      "scenario": "declining",
+      "rm_email": "seed26.rm03@example.test",
+      "representative_email": "seed26.rep043@example.test"
+    },
+    {
+      "business_code": "SEED26-044",
+      "business_name": "SEED26 - Demo Business 044",
+      "scenario": "collections_stress",
+      "rm_email": "seed26.rm04@example.test",
+      "representative_email": "seed26.rep044@example.test"
+    },
+    {
+      "business_code": "SEED26-045",
+      "business_name": "SEED26 - Demo Business 045",
+      "scenario": "recovery",
+      "rm_email": "seed26.rm05@example.test",
+      "representative_email": "seed26.rep045@example.test"
+    },
+    {
+      "business_code": "SEED26-046",
+      "business_name": "SEED26 - Demo Business 046",
+      "scenario": "steady_growth",
+      "rm_email": "seed26.rm06@example.test",
+      "representative_email": "seed26.rep046@example.test"
+    },
+    {
+      "business_code": "SEED26-047",
+      "business_name": "SEED26 - Demo Business 047",
+      "scenario": "seasonal",
+      "rm_email": "seed26.rm07@example.test",
+      "representative_email": "seed26.rep047@example.test"
+    },
+    {
+      "business_code": "SEED26-048",
+      "business_name": "SEED26 - Demo Business 048",
+      "scenario": "declining",
+      "rm_email": "seed26.rm08@example.test",
+      "representative_email": "seed26.rep048@example.test"
+    },
+    {
+      "business_code": "SEED26-049",
+      "business_name": "SEED26 - Demo Business 049",
+      "scenario": "collections_stress",
+      "rm_email": "seed26.rm09@example.test",
+      "representative_email": "seed26.rep049@example.test"
+    },
+    {
+      "business_code": "SEED26-050",
+      "business_name": "SEED26 - Demo Business 050",
+      "scenario": "recovery",
+      "rm_email": "seed26.rm10@example.test",
+      "representative_email": "seed26.rep050@example.test"
+    }
+  ]
+}
