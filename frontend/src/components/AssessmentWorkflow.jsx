@@ -91,6 +91,7 @@ export default function AssessmentWorkflow({ business, user, snapshots, onAssess
         {!months.length && <p className="management-help">No submitted financial months are loaded. Check Financial history before running an assessment.</p>}
       </form>
     </section>
+    {detailId && <AssessmentDetails key={`${detailId}:${revision}`} id={detailId} token={user.accessToken} active={active} onWarningSaved={onWarningSaved} onClose={() => setDetailId(null)} />}
     <section className="panel"><div className="panel-heading"><div><h2>Assessment history</h2><p>Open details or select records for comparison. Selections are kept when changing pages.</p></div><button className="button secondary" onClick={() => setRevision(v => v + 1)} disabled={resource.loading}>Reload history</button></div>
       <ResourceState resource={resource} empty={!rows.length}><div className="table-scroll"><table><thead><tr><th>Assessment</th><th>Date</th><th>Severity</th><th>Stress pattern</th><th>Actions</th></tr></thead><tbody>
         {rows.map(item => <tr key={item.assessmentId}><td>#{item.assessmentId}</td><td>{dateLabel(item.assessmentDate)}</td><td><WorkflowStatus value={item.severity} /></td><td>{humanize(item.stressPattern)}</td><td><div className="management-row-actions">
@@ -101,7 +102,6 @@ export default function AssessmentWorkflow({ business, user, snapshots, onAssess
       </tbody></table></div></ResourceState>
       <WorkflowPagination page={page} onPage={setPage} loading={resource.loading} count={resource.error ? undefined : rows.length} hasNext={!resource.error && rows.length === 10} />
     </section>
-    {detailId && <AssessmentDetails key={`${detailId}:${revision}`} id={detailId} token={user.accessToken} active={active} onWarningSaved={onWarningSaved} onClose={() => setDetailId(null)} />}
     <section className="panel"><div className="panel-heading"><div><h2>Compare assessments</h2><p>Select Before and After from any history page.</p></div></div><div className="workflow-inset">
       <div className="workflow-selection"><span>Before: <strong>{before ? `#${before.assessmentId} · ${dateLabel(before.assessmentDate)}` : "Not selected"}</strong></span><span>After: <strong>{after ? `#${after.assessmentId} · ${dateLabel(after.assessmentDate)}` : "Not selected"}</strong></span></div>
       {comparisonError && <p className="notice error" role="alert">{comparisonError}</p>}
