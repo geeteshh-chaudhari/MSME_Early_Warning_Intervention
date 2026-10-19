@@ -369,6 +369,29 @@ tr:last-child td { border-bottom: none; }
 .danger-text { color: #b35f4c; }
 
 .workflow-stack { min-width: 0; }
+.intervention-workspace { border-top: 1px solid var(--border); }
+.intervention-editor { padding: 22px 23px; background: #f8fbf9; border-block: 1px solid var(--border); }
+.intervention-editor > .management-help { margin: 0 0 20px; }
+.intervention-form-fields { margin-top: 20px; }
+.intervention-list { display: grid; gap: 14px; padding: 0 23px 20px; }
+.intervention-card { padding: 20px; border: 1px solid #e1ebe4; border-radius: 10px; background: #fcfefd; }
+.intervention-card h3 { font-size: 13px; }
+.intervention-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin: 15px 0; color: #8a9e92; font-size: 10px; }
+.intervention-meta > span { display: inline-flex; align-items: center; gap: 6px; }
+.intervention-detail { border-top: 1px solid var(--border); }
+.intervention-review { margin: 18px 0; }
+.intervention-review > div { display: flex; justify-content: space-between; gap: 18px; border-bottom: 1px solid #e1ebe4; padding: 12px 0; font-size: 12px; line-height: 1.7; }
+.intervention-review dt { color: #7d9385; }
+.intervention-review dd { margin: 0; color: #355d45; text-align: right; }
+.workflow-info { background: #edf5f7; border: 1px solid #d2e4ea; color: #567985; }
+.intervention-editor .table-scroll { margin-top: 14px; background: white; border: 1px solid var(--border); border-radius: 8px; }
+.intervention-editor [aria-pressed="true"] { font-weight: 700; text-decoration: underline; }
+@media (max-width: 700px) {
+  .intervention-editor, .intervention-list { padding-inline: 17px; }
+  .intervention-card { padding: 16px; }
+  .intervention-review > div { flex-direction: column; gap: 6px; }
+  .intervention-review dd { text-align: left; }
+}
 .workflow-inset { padding: 0 23px 23px; }
 .notice.workflow-inset { padding: 14px 17px; margin: 0 23px 23px; }
 .workflow-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 0 23px 22px; font-size: 11px; color: #7b9388; }
@@ -504,4 +527,20 @@ tr:last-child td { border-bottom: none; }
   .snapshot-review {
     padding: 16px;
   }
+}
+
+/* Shared business selector and form dropdowns on every workspace screen. */
+.business-context { flex-wrap: wrap; }
+.business-switcher { width: min(100%, 420px); margin-left: auto; }
+.business-switcher > label { display: block; margin-bottom: 8px; color: #42685c; font-size: 12px; font-weight: 650; }
+.business-select { width: 100%; min-height: 54px; border: 1px solid #a9cbbd; border-radius: 10px; padding-right: 16px; background: #fff; box-shadow: 0 2px 6px #173d2c06; color: #287c64; }
+.business-select:focus-within { border-color: var(--teal); box-shadow: 0 0 0 3px #087f7515; }
+.business-select select { flex: 1; width: 100%; min-width: 0; max-width: none; padding: 15px 16px; font-size: 14px; font-weight: 550; line-height: 1.5; color: #294f43; cursor: pointer; }
+.business-select > svg { pointer-events: none; }
+.snapshot-field select { min-height: 48px; padding: 12px 14px; font-size: 14px; line-height: 1.5; cursor: pointer; }
+select option { color: #29493b; background: #fff; font-size: 14px; }
+@media (max-width: 700px) {
+  .business-switcher { width: 100%; }
+  .business-select select { font-size: 16px; }
+  .snapshot-field select { font-size: 16px; }
 }

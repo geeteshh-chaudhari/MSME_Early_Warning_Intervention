@@ -20,8 +20,8 @@ export function ResourceState({ resource, empty, children }) {
 export function WorkflowPagination({ page, onPage, loading, count, hasNext }) {
   return <div className="workflow-pagination">
     <span>Page {page + 1}{count != null ? ` · ${count} records` : ""}</span>
-    <div><button className="button secondary" disabled={loading || page === 0} onClick={() => onPage(page - 1)}>Previous</button>
-      <button className="button secondary" disabled={loading || !hasNext} onClick={() => onPage(page + 1)}>Next</button></div>
+    <div><button type="button" className="button secondary" disabled={loading || page === 0} onClick={() => onPage(page - 1)}>Previous</button>
+      <button type="button" className="button secondary" disabled={loading || !hasNext} onClick={() => onPage(page + 1)}>Next</button></div>
   </div>;
 }
 export function IndicatorTable({ indicators = [] }) {
