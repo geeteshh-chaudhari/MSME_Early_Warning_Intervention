@@ -1,0 +1,297 @@
+MICROSERVICE REQUIREMENTS
+
+1. SERVICE DETAILS
+
+Service name:
+warning-intervention-service
+(Proposed technical name; the image calls it Warning & Intervention Service.
+No registered business-service name exists in the project.)
+
+Purpose:
+Manage MSME warnings, explain why attention is needed now, suggest non-binding
+actions, record human review decisions, and track interventions and monthly
+follow-up outcomes.
+
+Project/output folder:
+C:\Users\Geetesh Chaudhari\Desktop\MSME_Early_Warning_Intervention\warning-intervention-service
+(Proposed future folder; creating this requirements file does not authorise
+implementation, builds, database changes, or deployment.)
+
+
+2. WHAT SHOULD THE SERVICE DO?
+
+REQ-001: Create warnings
+Create a warning when a valid assessment identifies one or more breached
+indicators. Link it to its assessment and start with status OPEN. Allow only
+one warning per assessment, following the Oracle unique constraint.
+Use results supplied by the Assessment module rather than duplicating its
+financial indicator calculations. Do not create warnings from missing,
+invalid, or incomplete assessment data.
+
+REQ-002: Explain Why Now
+Show severity, primary driver, stress pattern, breached indicators, thresholds,
+and previous-versus-current values. Provide a plain-language explanation of
+why the MSME needs attention now. Store it in why_now_text. Retrieve supporting
+evidence through the agreed Assessment interface, which is not yet defined.
+
+REQ-003: Recommend actions
+Provide advisory recommendations based on the stress driver:
+- Revenue deterioration: discuss sales trends, key customers, and business review.
+- Overdue receivables: review overdue invoices and delayed buyers; discuss
+  whether eligible invoice-financing options could be explored.
+- Credit utilisation: review working capital use and upcoming obligations.
+- Multiple drivers: arrange RM review and consider Risk Admin escalation.
+Store recommended_action. Recommendations must not execute lending or change
+customer accounts.
+
+REQ-004: View and track warnings
+Show warning details, evidence, current status, decisions, interventions,
+and follow-up history. Support the existing database values:
+OPEN, UNDER_REVIEW, ESCALATED, INTERVENTION_ACTIVE, CLOSED_REVIEWED, CLOSED.
+Restrict RMs to assigned MSMEs and representatives to their own MSME.
+Risk Admin reviews high-priority and escalated cases.
+Filtering, ordering, pagination, and the full transition matrix are to confirm.
+
+REQ-005: Record RM decisions
+Allow the assigned RM to accept, reject, or escalate a warning.
+Accepting requires an action, owner, and follow-up date.
+Rejecting requires a reason, preserves history, and uses CLOSED_REVIEWED.
+Escalation sends the case for Risk Admin review.
+Record decision, actor, timestamp, and reason in case history.
+The schema has no dedicated decision-history table. Persistence design and
+exact status mapping are to confirm.
+
+REQ-006: Support Risk Admin decisions
+Allow Risk Admin to review escalated or high-priority warnings, return cases
+for further RM review, or close cases with a documented reason.
+Return is specified in the image, but its target status and permitted
+transitions are not defined in the DDL or contracts and are to confirm.
+
+REQ-007: Maintain decision and activity history
+Preserve creation, decisions, reasons, escalation, return, intervention changes,
+follow-up reviews, and closure history. The existing activity_log can hold
+actor, action, related entity, description, timestamp, and JSON metadata.
+Action codes and decision metadata structure are to confirm.
+
+REQ-008: Record interventions
+For accepted warnings, record action, owner, creator, notes, active status,
+and follow-up date. Multiple interventions per warning are permitted.
+Use intervention.action_text, notes, created_by_user_id, is_active,
+created_at, closed_at, and closed_by_user_id.
+The table has no explicit owner or follow-up-date column; their persistence
+requires an agreed schema or storage design.
+
+REQ-009: Set and revise follow-up dates
+Allow the RM to set and track a follow-up date. If an action cannot be completed,
+record the reason, allow an alternative action, and revise the follow-up date.
+Keep the case active or escalate it; do not silently close it.
+Date validation, reminders, and automatic scheduling are to confirm.
+
+REQ-010: Track monthly outcomes
+When later monthly assessment data becomes available, compare relevant
+indicators before and after intervention. Record reviewer, assessment, outcome,
+notes, review timestamp, and whether the intervention remains active.
+Enforce one review per intervention/assessment pair.
+Use IMPROVING, STABILISING, STILL_STRESSED, ESCALATED.
+The reference proposal describes:
+- Improving/Stabilising: lower severity and improvement in at least one
+  relevant indicator.
+- Still Stressed: unchanged severity or a material indicator remains breached.
+- Escalated: increased severity or human escalation.
+The distinction between IMPROVING and STABILISING and precedence for overlapping
+conditions are to confirm. Show before/after values and data dates. Do not
+claim that intervention caused improvement.
+
+REQ-011: Close cases
+Allow authorised human reviewers to close cases with a documented reason,
+preserving history. Record warning.closed_at. When closing an intervention,
+set is_active to N and record closed_at and closed_by_user_id.
+Rules for closing warnings with active interventions and the distinction
+between CLOSED and CLOSED_REVIEWED are to confirm.
+
+REQ-012: Optional notifications
+The image identifies NOTIFICATION as optional. Channels, recipients, triggers,
+delivery rules, and persistence are undefined. No NOTIFICATION table exists.
+Confirm optional scope before implementation.
+
+REQ-013: Persist workflow changes
+Explicitly require Oracle writes for warning creation, decisions, status changes,
+interventions, follow-up reviews, and activity history. These are separate write
+requirements beyond the template's default fetching scope. They describe future
+implementation and do not authorise database execution now.
+
+
+3. WHERE ARE THE PROJECT DETAILS?
+
+Project context folder:
+C:\Users\Geetesh Chaudhari\Desktop\MSME_Early_Warning_Intervention
+
+Project documentation (relative to context folder):
+project\Project.md
+project\Architecture.md
+project\Contracts.md
+project\Agent.md
+project\Tasks.md
+project\Shared_Memory.md
+
+Functional references:
+Supplied Warning & Intervention Service image.
+Reference\MSME_Early_Warning_Intervention_Phase_0 (1) (1).pdf
+Reference\Workflow.png
+
+Oracle connection configuration:
+database_url 
+database_user3
+database_password3
+
+Above are the env variables for the db connection
+
+Oracle tables and fields for reference:
+Source: Profile_Finance_DDL.sql
+
+WARNING:
+warning_id, assessment_id, warning_status, primary_driver, why_now_text,
+recommended_action, created_at, closed_at.
+
+INTERVENTION:
+intervention_id, warning_id, created_by_user_id, action_text, notes, is_active,
+created_at, closed_at, closed_by_user_id.
+
+FOLLOW_UP_REVIEW:
+followup_id, intervention_id, assessment_id, reviewed_by_user_id, outcome,
+review_notes, reviewed_at, keep_intervention_active.
+
+ACTIVITY_LOG:
+activity_id, msme_id, actor_user_id, actor_type, action_code,
+related_entity_type, related_entity_id, description, created_at, metadata_json.
+
+Supporting tables owned by other modules:
+app_user, msme, financial_snapshot, risk_assessment,
+assessment_indicator_result, threshold_config.
+
+Synthetic sample data: Profile_Finance_dummy_data.sql
+
+Database ownership:
+The image labels the service database warning-db. The DDL groups this module's
+tables under USER3, but does not provision separate schemas, users, or grants.
+
+Schema gaps:
+No explicit intervention owner or follow-up date, dedicated decision-history
+table, or notification table. Several cross-module IDs lack foreign keys.
+Complete workflow transitions are not defined.
+
+Eureka configuration:
+Development URL: http://localhost:8080/eureka/
+References:
+api-gateway\src\main\resources\application.properties
+RegistryServer\src\main\resources\application.properties
+Registry: RegistryServer, port 8080.
+Gateway: api-gateway, port 8081; registration and registry fetching enabled.
+Business gateway routes are not yet configured.
+
+Existing service to follow:
+No comparable business-service implementation exists. Use api-gateway and
+RegistryServer only as infrastructure and package-convention references.
+They do not establish business API, persistence, or security conventions.
+
+
+4. SPECIAL RULES - OPTIONAL
+
+Who may use the service / access restrictions:
+RM: Review assigned MSMEs, accept/reject/escalate warnings, and record
+interventions and follow-up outcomes.
+RISK_ADMIN: Review high-priority and escalated cases; return or close with reasons.
+MSME_REP: View own explanations, status, agreed actions, and follow-up dates.
+The proposal also mentions representative acknowledgements and comments;
+inclusion in this image-focused scope is to confirm.
+Authentication and detailed permission enforcement are not defined.
+
+Other services it must call:
+Assessment module: Results, severity, stress patterns, evidence, later assessments.
+Profile & Finance module: MSME identity, assigned RM, and user/role information.
+Existing Eureka: Registration and dependency discovery.
+Exact service names, endpoints, DTOs, and communication contracts are undefined.
+
+Important limits or failure behavior:
+Preserve warnings and history when new assessment data is unavailable. Show
+last valid data date and stale-data status when applicable. Do not create
+misleading warnings or outcomes. Enforce uniqueness and allowed-value constraints.
+Validate cross-module references and same-MSME consistency because foreign keys
+do not cover all references. Performance targets, result limits, timeouts,
+retries, and Oracle/Eureka outage behavior are not specified.
+
+Sensitive data:
+Use synthetic prototype data. Exclude real customer information and banking
+credentials. Do not expose or log password_hash or database secrets.
+Detailed handling of free-text notes and contact data is to confirm.
+
+Packaging:
+To confirm. Gateway uses JAR and registry uses WAR; no business-service
+packaging convention is established.
+
+Do not include:
+Live banking, payment, GST, accounting, TReDS, or credit-bureau integration.
+Loan approval, pricing, disbursement, restructuring or collections execution,
+default prediction, or autonomous financial decisions.
+Implementation of other business modules, their financial calculations,
+or threshold administration. Mandatory notifications without scope confirmation.
+
+Other constraints:
+Module owner: Geetesh.
+Existing base-package reference: com.msme; exact service package is to confirm.
+Follow project contracts and preserve module boundaries; business APIs are
+not currently agreed.
+Template requires JDK 25 and Maven 3.9.1. Existing projects declare Java 22
+and wrappers reference Maven 3.10.0. Existing POMs declare Spring Boot 4.1.1
+and Spring Cloud 2025.1.3; compatibility for this service is unverified.
+Reconcile stack differences before implementation. Do not silently modify
+infrastructure or shared schemas. Coverage target, service port, timezone,
+and API serialization rules are not specified.
+
+
+5. LIVE TEST CONNECTIONS - IF AVAILABLE
+
+Oracle test configuration:
+Unavailable. DDL and synthetic data exist, but no designated test connection
+is configured.
+
+Eureka test configuration:
+Local reference: http://localhost:8080/eureka/
+RegistryServer\src\main\resources\application.properties
+Availability and registration are unverified. No live tests were run.
+
+
+FIXED STACK - NO FIELDS TO FILL
+
+Framework: Spring Boot
+Java: JDK 25
+Maven: 3.9.1
+Service registry: Existing Eureka server
+Database: Oracle 26 AI Database
+Database access: Fetching data; writes require a separate requirement
+
+Workflow write requirements are listed in REQ-013. Oracle version is a template
+requirement, not verified against a configured instance.
+Maven 3.9.1 remains the template constraint. Recommend a maintained release
+and obtain authorisation before changing it.
+
+
+WHAT THE AGENT WILL HANDLE - NO FIELDS TO FILL
+
+For a separately requested implementation:
+- Select compatible dependencies and record compatibility evidence.
+- Design routes, HTTP methods, request/response types, and status codes.
+- Derive validation, pagination, and acceptance criteria.
+- Follow existing project contracts.
+- Document the API using OpenAPI and examples.
+- Generate meaningful JUnit tests.
+- Include a pinned Maven wrapper and build/run instructions.
+- Run local build verification.
+- Run authorised live integration tests when environments are available.
+- Report unavailable integration checks as unverified.
+- Resolve essential missing business, access, and data information.
+- Ignore illustrative examples as requirements.
+
+Current request:
+Save this filled requirements document only. Do not implement, build, run,
+deploy, or change other project files.

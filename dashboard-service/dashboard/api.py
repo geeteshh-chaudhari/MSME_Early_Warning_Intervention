@@ -80,8 +80,11 @@ def create_app(settings=None, verifier=None, access=None, repository=None, disco
                 await client.stop()
 
     app = FastAPI(title="MSME Financial Dashboard", lifespan=lifespan,
-                  docs_url=None, redoc_url=None, openapi_url=None)
-    bearer = HTTPBearer(auto_error=False)
+                  version="1.0.0", docs_url=None, redoc_url=None, openapi_url="/openapi.json",
+                  servers=[{"url": "/", "description": "Current origin / API Gateway"}],
+                  root_path_in_servers=False)
+    bearer = HTTPBearer(auto_error=False, scheme_name="bearerAuth",
+                        description="MSME login accessToken. Paste the token without a Bearer prefix.")
 
     @app.middleware("http")
     async def response_policy(request, call_next):
@@ -97,21 +100,84 @@ def create_app(settings=None, verifier=None, access=None, repository=None, disco
             raise unauthorized()
         return app.state.verifier.verify(credentials.credentials)
 
-    @app.get("/")
+    @app.get("/", include_in_schema=False)
     def index():
         return FileResponse(STATIC / "index.html")
 
-    @app.get("/health")
+    @app.get("/health", include_in_schema=False)
     def health():
         return {"status": "UP", "service": "dashboard-service"}
 
-    @app.post("/api/dashboard/login")
+    @app.post("/api/dashboard/login", tags=["Dashboard login"],
+              summary="Sign in using the MSME identity service",
+              description="Public login proxy. Returns access_token; protected report requests use this value as a Bearer token.",
+              responses={200: {'description': 'JWT issued by MSME service',
+       'content': {'application/json': {'schema': {'type': 'object',
+                                                   'required': ['access_token'],
+                                                   'properties': {'access_token': {'type': 'string'}}}}}},
+ 401: {'description': 'Credentials rejected or current token/account invalid',
+       'content': {'application/json': {'schema': {'type': 'object',
+                                                   'properties': {'detail': {'type': 'string'}}}}}},
+ 502: {'description': 'Upstream login failed or returned an unexpected payload',
+       'content': {'application/json': {'schema': {'type': 'object',
+                                                   'properties': {'detail': {'type': 'string'}}}}}},
+ 503: {'description': 'Login dependency unavailable or misconfigured',
+       'content': {'application/json': {'schema': {'type': 'object',
+                                                   'properties': {'detail': {'type': 'string'}}}}}}})
     def login(body: Login):
         result = login_to_msme(body, os.getenv("AUTH_LOGIN_URL", "http://localhost:8082/api/auth/login"))
         app.state.verifier.verify(result["access_token"])
         return JSONResponse(result)
 
-    @app.get("/api/dashboard/msmes/{msme_id}")
+    @app.get("/api/dashboard/msmes/{msme_id}", tags=["Financial analytics"],
+             summary="Get a monthly MSME financial report",
+             description="Risk Admin: any active business; RM: assigned business; representative: linked business. Uses the same deterministic tools as recommendations, without calling the recommendation API or Ollama.",
+             responses={200: {'description': 'Forty-eight monthly rows including gaps, all twenty-one shared metrics, '
+                      'saved indicators and limitations. No LLM call.',
+       'content': {'application/json': {'schema': {'type': 'object',
+                                                   'required': ['msme_id',
+                                                                'as_of',
+                                                                'formula_version',
+                                                                'context',
+                                                                'credit_limit',
+                                                                'evidence',
+                                                                'series',
+                                                                'saved_indicators',
+                                                                'notes'],
+                                                   'properties': {'msme_id': {'type': 'integer'},
+                                                                  'as_of': {'type': 'string',
+                                                                            'format': 'date'},
+                                                                  'formula_version': {'type': 'string'},
+                                                                  'context': {'type': 'object'},
+                                                                  'credit_limit': {'type': 'number'},
+                                                                  'evidence': {'type': 'object'},
+                                                                  'series': {'type': 'array',
+                                                                             'items': {'type': 'object',
+                                                                                       'properties': {'month': {'type': 'string',
+                                                                                                                'format': 'date'},
+                                                                                                      'available': {'type': 'boolean'},
+                                                                                                      'snapshot': {'type': ['object',
+                                                                                                                            'null']},
+                                                                                                      'metrics': {'type': 'object'}}}},
+                                                                  'saved_indicators': {'type': 'array',
+                                                                                       'items': {'type': 'object'}},
+                                                                  'notes': {'type': 'array',
+                                                                            'items': {'type': 'string'}}}}}}},
+ 400: {'description': 'Invalid business ID, month or incomplete reporting period',
+       'content': {'application/json': {'schema': {'type': 'object',
+                                                   'properties': {'detail': {'type': 'string'}}}}}},
+ 401: {'description': 'Missing, invalid or expired JWT / inactive current account',
+       'content': {'application/json': {'schema': {'type': 'object',
+                                                   'properties': {'detail': {'type': 'string'}}}}}},
+ 403: {'description': 'Business access denied or MSME inactive',
+       'content': {'application/json': {'schema': {'type': 'object',
+                                                   'properties': {'detail': {'type': 'string'}}}}}},
+ 404: {'description': 'No financial snapshot for requested month',
+       'content': {'application/json': {'schema': {'type': 'object',
+                                                   'properties': {'detail': {'type': 'string'}}}}}},
+ 503: {'description': 'Financial history or account/dependency lookup unavailable',
+       'content': {'application/json': {'schema': {'type': 'object',
+                                                   'properties': {'detail': {'type': 'string'}}}}}}})
     def report(msme_id: int, as_of: str = Query(pattern=r"^\d{4}-\d{2}$"), identity=Depends(authenticate)):
         if msme_id <= 0:
             raise HTTPException(422, "MSME ID must be positive.")
