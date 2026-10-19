@@ -24,9 +24,17 @@ export async function apiRequest(
   }
 
   if (!response.ok) {
-    const message =
-      (typeof data === "object" && data?.message) ||
+    const baseMessage =
+      (typeof data === "object" && (data?.message || (typeof data?.detail === "string" && data.detail))) ||
       `Request failed (${response.status})`;
+    const details = Array.isArray(data?.details)
+      ? data.details.filter(item => typeof item === "string").join("; ")
+      : data?.validationErrors && typeof data.validationErrors === "object"
+        ? Object.values(data.validationErrors).join("; ")
+        : "";
+    const message = response.status === 401
+      ? "Authentication was rejected. Sign out and log in again; if it continues, check this service's authentication configuration."
+      : details ? `${baseMessage}: ${details}` : baseMessage;
 
     const error = new Error(message);
     error.status = response.status;

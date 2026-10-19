@@ -1,6 +1,9 @@
 import FinancialSnapshotForm from "../components/FinancialSnapshotForm";
 import BusinessForm from "../components/BusinessForm";
 import RepresentativeManagement from "../components/RepresentativeManagement";
+import AssessmentWorkflow from "../components/AssessmentWorkflow";
+import ThresholdManagement from "../components/ThresholdManagement";
+import WarningWorkflow from "../components/WarningWorkflow";
 import { useEffect, useRef, useState } from "react";
 import {
   Activity,
@@ -98,9 +101,9 @@ function toList(data) {
 function Badge({ value }) {
   const normalized = String(value || "").toUpperCase();
 
-  const tone = ["LOW", "CLOSED", "ACTIVE", "APPROVED"].includes(normalized)
+  const tone = ["LOW", "HEALTHY", "CLOSED", "CLOSED_REVIEWED", "ACTIVE", "APPROVED"].includes(normalized)
     ? "success"
-    : ["HIGH", "CRITICAL", "OPEN"].includes(normalized)
+    : ["HIGH", "HIGH_PRIORITY", "CRITICAL", "OPEN", "ESCALATED", "REJECTED"].includes(normalized)
       ? "danger"
       : "warning";
 
@@ -285,7 +288,7 @@ function BusinessWorkspace({ business, user, tab }) {
     ? [
         [
           "assessments",
-          `/assessment/msmes/${business.msmeId}/assessments`,
+          `/assessment/msmes/${business.msmeId}/assessments/latest`,
         ],
       ]
     : []),
@@ -298,12 +301,16 @@ function BusinessWorkspace({ business, user, tab }) {
 
     Promise.allSettled(
       endpoints.map(async ([name, path]) => {
-        const response = await apiRequest(path, {
-          token: user.accessToken,
-          signal: controller.signal,
-        });
-
-        return { name, data: toList(response) };
+        try {
+          const response = await apiRequest(path, {
+            token: user.accessToken,
+            signal: controller.signal,
+          });
+          return { name, data: name === "assessments" ? (response ? [response] : []) : toList(response) };
+        } catch (error) {
+          if (name === "assessments" && error.status === 404) return { name, data: [] };
+          throw error;
+        }
       })
     ).then((results) => {
       if (controller.signal.aborted) return;
@@ -381,8 +388,34 @@ function BusinessWorkspace({ business, user, tab }) {
 
   const openWarnings = warnings.filter(
     (warning) =>
-      !["CLOSED", "DISMISSED"].includes(warning.warningStatus)
+      !["CLOSED", "CLOSED_REVIEWED"].includes(warning.warningStatus)
   );
+
+  function assessmentSaved(saved) {
+    setResource(previous => {
+      const nextErrors = { ...previous.errors };
+      delete nextErrors.assessments;
+      return { ...previous, errors: nextErrors, assessments: [...previous.assessments.filter(item => item.assessmentId !== saved.assessmentId), saved] };
+    });
+  }
+
+  function warningSaved(saved) {
+    setResource(previous => {
+      const nextErrors = { ...previous.errors };
+      delete nextErrors.warnings;
+      return { ...previous, errors: nextErrors, warnings: [saved, ...previous.warnings.filter(item => item.warningId !== saved.warningId)] };
+    });
+  }
+
+  if (tab === "assessments" && user.role !== "MSME_REP") {
+    return <AssessmentWorkflow business={business} user={user} snapshots={snapshots} onAssessmentSaved={assessmentSaved} onWarningSaved={warningSaved} />;
+  }
+  if (tab === "thresholds" && user.role !== "MSME_REP") {
+    return <ThresholdManagement business={business} user={user} />;
+  }
+  if (tab === "warnings") {
+    return <WarningWorkflow business={business} user={user} onWarningSaved={warningSaved} />;
+  }
 
   return (
     <>
@@ -610,70 +643,6 @@ function BusinessWorkspace({ business, user, tab }) {
         </section>
       )}
 
-      {tab === "assessments" && user.role !== "MSME_REP" && (
-        <section className="panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Assessment history</h2>
-              <p>Saved risk results for this business</p>
-            </div>
-          </div>
-
-          {errors.assessments ? (
-            <Empty title="Assessments unavailable">
-              {errors.assessments}
-            </Empty>
-          ) : !assessments.length ? (
-            <Empty title="No assessments to display">
-              Completed assessments will appear here.
-            </Empty>
-          ) : (
-            <div className="table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Assessment</th>
-                    <th>Date</th>
-                    <th>Severity</th>
-                    <th>Stress pattern</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {sortedAssessments.map((item) => (
-                    <tr key={item.assessmentId}>
-                      <td className="strong">
-                        #{item.assessmentId}
-                      </td>
-                      <td>{formatDate(item.assessmentDate)}</td>
-                      <td><Badge value={item.severity} /></td>
-                      <td>{readable(item.stressPattern)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      )}
-
-      {tab === "warnings" && (
-        <section className="panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Warnings & follow-up</h2>
-              <p>
-                Up to 100 warnings for the selected business
-              </p>
-            </div>
-          </div>
-
-          <WarningList
-            warnings={warnings}
-            error={errors.warnings}
-          />
-        </section>
-      )}
     </>
   );
 }
@@ -821,13 +790,18 @@ export default function Dashboard() {
       icon: CircleAlert,
     },
     {
+      id: "thresholds",
+      label: "Thresholds",
+      icon: ShieldCheck,
+    },
+    {
       id: "profile",
       label: "My profile",
       icon: UserRound,
     },
   ].filter(
   (item) =>
-    item.id !== "assessments" || user.role !== "MSME_REP"
+    !["assessments", "thresholds"].includes(item.id) || user.role !== "MSME_REP"
 );
 
   const currentLabel = navItems.find(
