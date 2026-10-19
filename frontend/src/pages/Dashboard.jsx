@@ -1,4 +1,7 @@
-import { useEffect, useState } from "react";
+import FinancialSnapshotForm from "../components/FinancialSnapshotForm";
+import BusinessForm from "../components/BusinessForm";
+import RepresentativeManagement from "../components/RepresentativeManagement";
+import { useEffect, useRef, useState } from "react";
 import {
   Activity,
   ArrowRight,
@@ -8,6 +11,8 @@ import {
   FileText,
   LayoutDashboard,
   LogOut,
+  Pencil,
+  Plus,
   Menu,
   RefreshCw,
   Search,
@@ -21,6 +26,7 @@ import {
 
 import { useAuth } from "../context/AuthContext";
 import { apiRequest } from "../api/client";
+import { deactivateBusiness } from "../api/businessApi";
 
 const ROLE_CONFIG = {
   MSME_REP: {
@@ -268,20 +274,26 @@ function BusinessWorkspace({ business, user, tab }) {
     const controller = new AbortController();
 
     const endpoints = [
-      [
-        "snapshots",
-        user.role === "MSME_REP"
-          ? "/snapshots/my"
-          : `/snapshots/msme/${business.msmeId}`,
-      ],
-      [
-        "assessments",
-        `/assessment/msmes/${business.msmeId}/assessments`,
-      ],
-      [
-        "warnings",
-        `/warnings?msmeId=${business.msmeId}&size=100`,
-      ],
+       [
+    "snapshots",
+    user.role === "MSME_REP"
+      ? "/snapshots/my"
+      : `/snapshots/msme/${business.msmeId}`,
+  ],
+
+  ...(user.role !== "MSME_REP"
+    ? [
+        [
+          "assessments",
+          `/assessment/msmes/${business.msmeId}/assessments`,
+        ],
+      ]
+    : []),
+
+  [
+    "warnings",
+    `/warnings?msmeId=${business.msmeId}&size=100`,
+  ],
     ];
 
     Promise.allSettled(
@@ -336,6 +348,26 @@ function BusinessWorkspace({ business, user, tab }) {
 
   const { snapshots, assessments, warnings, errors } = resource;
 
+  function handleSnapshotSaved(snapshot) {
+    setResource((previous) => {
+      const nextErrors = { ...previous.errors };
+      delete nextErrors.snapshots;
+
+      return {
+        ...previous,
+        snapshots: [
+          ...previous.snapshots.filter(
+            (item) =>
+              String(item.reportingPeriod).slice(0, 7) !==
+              String(snapshot.reportingPeriod).slice(0, 7)
+          ),
+          snapshot,
+        ],
+        errors: nextErrors,
+      };
+    });
+  }
+
   const sortedSnapshots = [...snapshots].sort((a, b) =>
     String(b.reportingPeriod).localeCompare(String(a.reportingPeriod))
   );
@@ -354,6 +386,15 @@ function BusinessWorkspace({ business, user, tab }) {
 
   return (
     <>
+      {tab === "financials" && user.role === "MSME_REP" && (
+        <FinancialSnapshotForm
+          business={business}
+          token={user.accessToken}
+          existingSnapshots={snapshots}
+          onSaved={handleSnapshotSaved}
+        />
+      )}
+
       {Object.keys(errors).length > 0 && (
         <div className="notice error" role="alert">
           {Object.entries(errors).map(([name, message]) => (
@@ -398,24 +439,23 @@ function BusinessWorkspace({ business, user, tab }) {
               />
 
               <StatCard
-                icon={<ShieldCheck size={20} />}
-                label="Latest assessment"
-                value={
-                  assessment ? readable(assessment.severity) : "—"
-                }
-                note={
-                  errors.assessments
-                    ? "Assessment service unavailable"
-                    : assessment
-                      ? formatDate(assessment.assessmentDate)
-                      : "No assessment available"
-                }
+                icon={<Wallet size={20} />}
+                label="Total receivables"
+                value={compact(latest?.totalReceivables)}
+                note="From the latest submitted snapshot"
                 tone="violet"
               />
             </div>
           )}
 
-          <div className="dashboard-columns">
+          <div
+            className="dashboard-columns"
+            style={
+              user.role === "MSME_REP"
+                ? { gridTemplateColumns: "1fr" }
+                : undefined
+            }
+          >
             <section className="panel">
               <div className="panel-heading">
                 <div>
@@ -439,7 +479,8 @@ function BusinessWorkspace({ business, user, tab }) {
               )}
             </section>
 
-            <section className="panel">
+            {user.role !== "MSME_REP" && (
+              <section className="panel">
               <div className="panel-heading">
                 <div>
                   <h2>Risk overview</h2>
@@ -478,7 +519,8 @@ function BusinessWorkspace({ business, user, tab }) {
                   {errors.warnings ? "—" : openWarnings.length}
                 </strong>
               </div>
-            </section>
+              </section>
+            )}
           </div>
 
           <section className="panel">
@@ -568,7 +610,7 @@ function BusinessWorkspace({ business, user, tab }) {
         </section>
       )}
 
-      {tab === "assessments" && (
+      {tab === "assessments" && user.role !== "MSME_REP" && (
         <section className="panel">
           <div className="panel-heading">
             <div>
@@ -648,6 +690,12 @@ export default function Dashboard() {
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const [mobileMenu, setMobileMenu] = useState(false);
+  const [businessEditor, setBusinessEditor] = useState(null);
+  const [deactivation, setDeactivation] = useState(null);
+  const [deactivating, setDeactivating] = useState(false);
+  const [managementError, setManagementError] = useState("");
+  const [managementMessage, setManagementMessage] = useState("");
+  const deactivationInFlight = useRef(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -777,7 +825,10 @@ export default function Dashboard() {
       label: "My profile",
       icon: UserRound,
     },
-  ];
+  ].filter(
+  (item) =>
+    item.id !== "assessments" || user.role !== "MSME_REP"
+);
 
   const currentLabel = navItems.find(
     (item) => item.id === tab
@@ -792,6 +843,34 @@ export default function Dashboard() {
     setLoading(true);
     setError("");
     setRevision((previous) => previous + 1);
+  }
+
+  function businessSaved(savedBusiness) {
+    setBusinesses(previous => previous.some(b => b.msmeId === savedBusiness.msmeId)
+      ? previous.map(b => b.msmeId === savedBusiness.msmeId ? savedBusiness : b)
+      : [...previous, savedBusiness]);
+    setBusinessEditor(null);
+    setManagementError("");
+    setManagementMessage(`${savedBusiness.businessName} saved successfully.`);
+    if (!selectedId) setSelectedId(String(savedBusiness.msmeId));
+  }
+
+  async function confirmDeactivation() {
+    if (!deactivation || deactivationInFlight.current) return;
+    deactivationInFlight.current = true;
+    setDeactivating(true);
+    setManagementError("");
+    try {
+      const updated = await deactivateBusiness(user.accessToken, deactivation.msmeId);
+      businessSaved(updated);
+      setManagementMessage(`${updated.businessName} and its associated representative account have been deactivated.`);
+      setDeactivation(null);
+    } catch (err) {
+      setManagementError(err.status === 401 ? "Your session has expired. Sign out and log in again." : err.message);
+    } finally {
+      deactivationInFlight.current = false;
+      setDeactivating(false);
+    }
   }
 
   return (
@@ -1004,6 +1083,27 @@ export default function Dashboard() {
             </section>
           ) : (
             <>
+              {tab === "portfolio" && user.role === "RM" && (
+                <>
+                  {managementMessage && <div className="notice snapshot-success" role="status">{managementMessage}</div>}
+                  {managementError && <div className="notice error" role="alert">{managementError}</div>}
+                  {businessEditor && <BusinessForm
+                    key={businessEditor.business?.msmeId || "new"}
+                    token={user.accessToken}
+                    business={businessEditor.business}
+                    onSaved={businessSaved}
+                    onCancel={() => setBusinessEditor(null)}
+                  />}
+                  {deactivation && <section className="panel management-confirm" aria-labelledby="deactivate-title">
+                    <h2 id="deactivate-title">Deactivate {deactivation.businessName}?</h2>
+                    <p>This makes the business inactive and disables its associated representative account. Existing records are kept.</p>
+                    <div className="snapshot-actions">
+                      <button className="button secondary" disabled={deactivating} onClick={() => setDeactivation(null)}>Cancel</button>
+                      <button className="button danger-button" disabled={deactivating} onClick={confirmDeactivation}>{deactivating ? "Deactivating…" : "Confirm deactivation"}</button>
+                    </div>
+                  </section>}
+                </>
+              )}
               {tab === "overview" &&
                 user.role !== "MSME_REP" && (
                   <div className="stats-grid">
@@ -1071,6 +1171,12 @@ export default function Dashboard() {
                         </p>
                       </div>
 
+                      <div className="management-toolbar">
+                      {user.role === "RM" && tab === "portfolio" && (
+                        <button className="button primary" disabled={!!businessEditor || !!deactivation} onClick={() => {
+                          setManagementMessage(""); setManagementError(""); setBusinessEditor({});
+                        }}><Plus size={15} />Add business</button>
+                      )}
                       <div className="search-box">
                         <Search size={17} />
 
@@ -1082,6 +1188,7 @@ export default function Dashboard() {
                             setSearch(event.target.value)
                           }
                         />
+                      </div>
                       </div>
                     </div>
 
@@ -1151,6 +1258,7 @@ export default function Dashboard() {
                               </td>
 
                               <td>
+                                <div className="management-row-actions">
                                 <button
                                   className="table-open"
                                   aria-label={`View ${business.businessName}`}
@@ -1164,6 +1272,15 @@ export default function Dashboard() {
                                   View
                                   <ArrowRight size={15} />
                                 </button>
+                                {user.role === "RM" && tab === "portfolio" && business.isActive === "Y" && <>
+                                  <button className="table-open" disabled={!!businessEditor || !!deactivation} aria-label={`Edit ${business.businessName}`} onClick={() => {
+                                    setManagementMessage(""); setManagementError(""); setBusinessEditor({ business });
+                                  }}><Pencil size={14} />Edit</button>
+                                  <button className="table-open danger-text" disabled={!!businessEditor || !!deactivation} aria-label={`Deactivate ${business.businessName}`} onClick={() => {
+                                    setManagementMessage(""); setManagementError(""); setDeactivation(business);
+                                  }}>Deactivate</button>
+                                </>}
+                                </div>
                               </td>
                             </tr>
                           ))}
@@ -1179,6 +1296,10 @@ export default function Dashboard() {
                     )}
                   </section>
                 )}
+
+              {tab === "portfolio" && user.role === "RM" && (
+                <RepresentativeManagement token={user.accessToken} businesses={businesses} />
+              )}
 
               {selected && tab !== "portfolio" && (
                 <>
