@@ -65,6 +65,16 @@ class WarningWorkflowTests {
 
     @AfterEach void clear() { org.springframework.security.test.context.TestSecurityContextHolder.clearContext(); }
 
+    @Test void documentationIsPublicButBusinessApiStillRequiresJwt() throws Exception {
+        org.springframework.security.test.context.TestSecurityContextHolder.clearContext();
+        var mvc = MockMvcBuilders.webAppContextSetup(webContext).apply(springSecurity()).build();
+        mvc.perform(get("/v3/api-docs")).andExpect(status().isOk())
+            .andExpect(jsonPath("$.servers[0].url").value("/"))
+            .andExpect(jsonPath("$.security[0].bearerAuth").isArray())
+            .andExpect(jsonPath("$.paths['/api/warnings'].post.responses['201']").exists());
+        mvc.perform(get("/api/warnings").param("msmeId", "1")).andExpect(status().isUnauthorized());
+    }
+
     @Test void evidenceAndDeduplication() {
         var result = create();
         assertTrue(result.getWhyNowText().contains("Revenue fell"));

@@ -34,6 +34,7 @@ public class SecurityConfig {
                 )
 
                 .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/v3/api-docs", "/v3/api-docs/**").permitAll()
                         .requestMatchers(
                                 "/actuator/health",
                                 "/actuator/health/**",
