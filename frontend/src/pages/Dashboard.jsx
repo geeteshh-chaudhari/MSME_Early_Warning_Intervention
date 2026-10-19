@@ -4,6 +4,7 @@ import RepresentativeManagement from "../components/RepresentativeManagement";
 import AssessmentWorkflow from "../components/AssessmentWorkflow";
 import ThresholdManagement from "../components/ThresholdManagement";
 import WarningWorkflow from "../components/WarningWorkflow";
+import { WorkflowPagination } from "../components/WorkflowUi";
 import { useEffect, useRef, useState } from "react";
 import {
   Activity,
@@ -272,6 +273,7 @@ function WarningList({ warnings, error }) {
 
 function BusinessWorkspace({ business, user, tab }) {
   const [resource, setResource] = useState(null);
+  const [financialPage, setFinancialPage] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -356,6 +358,7 @@ function BusinessWorkspace({ business, user, tab }) {
   const { snapshots, assessments, warnings, errors } = resource;
 
   function handleSnapshotSaved(snapshot) {
+    setFinancialPage(0);
     setResource((previous) => {
       const nextErrors = { ...previous.errors };
       delete nextErrors.snapshots;
@@ -384,6 +387,9 @@ function BusinessWorkspace({ business, user, tab }) {
   );
 
   const latest = sortedSnapshots[0];
+  const financialPageCount = Math.max(1, Math.ceil(sortedSnapshots.length / 5));
+  const activeFinancialPage = Math.min(financialPage, financialPageCount - 1);
+  const visibleSnapshots = sortedSnapshots.slice(activeFinancialPage * 5, activeFinancialPage * 5 + 5);
   const assessment = sortedAssessments[0];
 
   const openWarnings = warnings.filter(
@@ -586,7 +592,7 @@ function BusinessWorkspace({ business, user, tab }) {
             <div>
               <h2>Financial history</h2>
               <p>
-                Submitted values in their original database units
+                Latest records first · 5 per page · Original database units
               </p>
             </div>
 
@@ -619,7 +625,7 @@ function BusinessWorkspace({ business, user, tab }) {
                 </thead>
 
                 <tbody>
-                  {sortedSnapshots.map((snapshot) => (
+                  {visibleSnapshots.map((snapshot) => (
                     <tr key={snapshot.snapshotId}>
                       <td>
                         {formatDate(snapshot.reportingPeriod)}
@@ -639,6 +645,15 @@ function BusinessWorkspace({ business, user, tab }) {
                 </tbody>
               </table>
             </div>
+          )}
+          {!errors.snapshots && snapshots.length > 0 && (
+            <WorkflowPagination
+              page={activeFinancialPage}
+              onPage={setFinancialPage}
+              loading={false}
+              count={snapshots.length}
+              hasNext={activeFinancialPage + 1 < financialPageCount}
+            />
           )}
         </section>
       )}
@@ -1292,8 +1307,11 @@ export default function Dashboard() {
                     </div>
 
                     {user.role !== "MSME_REP" ? (
+                      <div className="business-switcher">
+                      <label htmlFor="selected-business">Select business</label>
                       <div className="business-select">
                         <select
+                          id="selected-business"
                           aria-label="Select business"
                           value={selectedId}
                           onChange={(event) =>
@@ -1310,7 +1328,8 @@ export default function Dashboard() {
                           ))}
                         </select>
 
-                        <ChevronDown size={16} />
+                        <ChevronDown size={20} />
+                      </div>
                       </div>
                     ) : (
                       <Badge
