@@ -29,6 +29,8 @@ export async function apiRequest(
       `Request failed (${response.status})`;
     const details = Array.isArray(data?.details)
       ? data.details.filter(item => typeof item === "string").join("; ")
+      : Array.isArray(data?.detail)
+        ? data.detail.map(item => item.msg).filter(Boolean).join("; ")
       : data?.validationErrors && typeof data.validationErrors === "object"
         ? Object.values(data.validationErrors).join("; ")
         : "";
