@@ -67,8 +67,11 @@ def create_app(settings=None, verifier=None, access=None, repository=None, disco
                 await client.stop()
 
     app = FastAPI(title="MSME Recommendation API", lifespan=lifespan,
-                  docs_url=None, redoc_url=None, openapi_url=None)
-    bearer = HTTPBearer(auto_error=False)
+                  version="1.0.0", docs_url=None, redoc_url=None, openapi_url="/openapi.json",
+                  servers=[{"url": "/", "description": "Current origin / API Gateway"}],
+                  root_path_in_servers=False)
+    bearer = HTTPBearer(auto_error=False, scheme_name="bearerAuth",
+                        description="MSME login accessToken. Paste the token without a Bearer prefix.")
 
     def authenticate(credentials: HTTPAuthorizationCredentials | None = Depends(bearer)):
         from .api_security import unauthorized
@@ -82,11 +85,83 @@ def create_app(settings=None, verifier=None, access=None, repository=None, disco
         log.error("Recommendation dependency failure: %s", type(exc).__name__)
         return JSONResponse(status_code=503, content={"detail": "Database or dependency unavailable. Check service configuration and read grants."})
 
-    @app.get("/health")
+    @app.get("/health", include_in_schema=False)
     def health():
         return {"status": "UP", "service": "recommendation-service"}
 
-    @app.post("/api/recommendations")
+    @app.post("/api/recommendations", tags=["Recommendations"],
+              summary="Generate evidence-based MSME recommendations",
+              description="Analyse one active MSME for a completed reporting month. Risk Admin: any business; RM: assigned business; representative: linked business. Five deterministic tools calculate twenty-one metrics from up to forty-eight months. metrics_only skips Ollama. Normal generation uses a local model and at most one validation repair. This endpoint performs no database writes or case decisions.",
+              responses={200: {'description': 'Full generated advice, metrics-only evidence, or insufficient-data result. '
+                      'Full numeric evidence is returned separately from qualitative prose.',
+       'content': {'application/json': {'schema': {'type': 'object',
+                                                   'required': ['status',
+                                                                'msme_id',
+                                                                'as_of_month',
+                                                                'formula_version',
+                                                                'evidence'],
+                                                   'properties': {'status': {'type': 'string',
+                                                                             'enum': ['generated',
+                                                                                      'metrics_only',
+                                                                                      'insufficient_data']},
+                                                                  'msme_id': {'type': 'integer'},
+                                                                  'as_of_month': {'type': 'string',
+                                                                                  'format': 'date'},
+                                                                  'formula_version': {'type': 'string'},
+                                                                  'model': {'type': 'string'},
+                                                                  'tool_trace': {'type': 'array',
+                                                                                 'items': {'type': 'object',
+                                                                                           'properties': {'step': {'type': 'integer'},
+                                                                                                          'tool': {'type': 'string'}}}},
+                                                                  'evidence': {'type': 'object',
+                                                                               'additionalProperties': {'type': 'object'},
+                                                                               'description': 'Five '
+                                                                                              'tool '
+                                                                                              'result '
+                                                                                              'groups. '
+                                                                                              'Numeric '
+                                                                                              'evidence '
+                                                                                              'includes '
+                                                                                              'availability, '
+                                                                                              'units, '
+                                                                                              'formulas '
+                                                                                              'and '
+                                                                                              'comparison '
+                                                                                              'metadata.'},
+                                                                  'recommendation': {'type': 'object',
+                                                                                     'properties': {'summary': {'type': 'string'},
+                                                                                                    'actions': {'type': 'array',
+                                                                                                                'maxItems': 6,
+                                                                                                                'items': {'type': 'object',
+                                                                                                                          'required': ['title',
+                                                                                                                                       'interpretation',
+                                                                                                                                       'suggested_action',
+                                                                                                                                       'evidence_metric_ids'],
+                                                                                                                          'properties': {'title': {'type': 'string'},
+                                                                                                                                         'interpretation': {'type': 'string'},
+                                                                                                                                         'suggested_action': {'type': 'string'},
+                                                                                                                                         'evidence_metric_ids': {'type': 'array',
+                                                                                                                                                                 'items': {'type': 'string'}}}}},
+                                                                                                    'limitations': {'type': 'array',
+                                                                                                                    'items': {'type': 'string'}}}}}}}}},
+ 401: {'description': 'Missing, invalid or expired JWT / inactive current account',
+       'content': {'application/json': {'schema': {'type': 'object',
+                                                   'properties': {'detail': {'type': 'string'}}}}}},
+ 403: {'description': 'Role, MSME assignment or active status does not permit access',
+       'content': {'application/json': {'schema': {'type': 'object',
+                                                   'properties': {'detail': {'type': 'string'}}}}}},
+ 404: {'description': 'No snapshot for the exact requested reporting month',
+       'content': {'application/json': {'schema': {'type': 'object',
+                                                   'properties': {'detail': {'type': 'string'}}}}}},
+ 429: {'description': 'Another analysis is running in this service process. Retry-After: 10.',
+       'content': {'application/json': {'schema': {'type': 'object',
+                                                   'properties': {'detail': {'type': 'string'}}}}}},
+ 502: {'description': 'Model generation or response validation failed',
+       'content': {'application/json': {'schema': {'type': 'object',
+                                                   'properties': {'detail': {'type': 'string'}}}}}},
+ 503: {'description': 'Database, account lookup or dependency unavailable',
+       'content': {'application/json': {'schema': {'type': 'object',
+                                                   'properties': {'detail': {'type': 'string'}}}}}}})
     def recommend(body: RecommendationRequest, identity=Depends(authenticate)):
         user_id, role = identity
         try:

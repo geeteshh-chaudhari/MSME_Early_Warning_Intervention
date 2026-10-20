@@ -162,6 +162,13 @@
         <dependency>
             <groupId>com.h2database</groupId><artifactId>h2</artifactId><scope>test</scope>
         </dependency>
+
+        <!-- OpenAPI documentation; central Swagger UI is hosted by api-gateway. -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-api</artifactId>
+            <version>3.1.1</version>
+        </dependency>
     </dependencies>
 
 

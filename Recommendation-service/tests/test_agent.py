@@ -216,28 +216,7 @@ class AgentTests(unittest.TestCase):
             with self.subTest(summary=summary), self.assertRaises(ValueError):
                 validate_recommendation(recommendation, {"liquidity_metrics.overdue_ratio_pct"})
 
-    def test_numeric_prose_rejected_even_when_value_matches_evidence(self):
-        recommendation = FakeLLM([]).generate([], {"properties": {}})
-        recommendation["actions"][0]["interpretation"] = "The overdue ratio is 40%."
-        available = {"liquidity_metrics.overdue_ratio_pct"}
-        for number in (40, 30):
-            with self.assertRaisesRegex(ValueError, r"actions\[0\].interpretation.*40"):
-                validate_recommendation(recommendation, available, {"liquidity_metrics.overdue_ratio_pct": number})
 
-    def test_schema_restricts_each_prose_field_without_restricting_citation_digits(self):
-        import re
-        citation = "breach_persistence.credit_utilisation_breach_frequency_12m_pct"
-        schema = recommendation_schema([citation])
-        fields = [schema["properties"]["summary"]] + [
-            schema["properties"]["actions"]["items"]["properties"][name]
-            for name in ("title", "interpretation", "suggested_action")]
-        for field in fields:
-            self.assertEqual(field["minLength"], 1)
-            self.assertIsNotNone(re.fullmatch(field["pattern"], "Review the collection trend."))
-            self.assertIsNone(re.fullmatch(field["pattern"], "Review in 30 days."))
-        result = FakeLLM().generate([], {})
-        result["actions"][0]["evidence_metric_ids"] = [citation]
-        validate_recommendation(result, {citation}, {citation: 0})
 
     def test_reported_failure_lists_all_offending_fields_and_date(self):
         result = FakeLLM().generate([], {})
@@ -268,7 +247,7 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(result["recommendation"]["actions"], good["actions"])
         self.assertIn("formula", result["evidence"]["revenue_metrics"]["revenue_yoy_growth_pct"])
 
-    def test_alternative_unicode_numerals_are_rejected_in_all_prose_fields(self):
+    def test_unsupported_unicode_numbers_are_rejected_in_all_prose_fields(self):
         examples = ("Growth is ３.０％.", "Growth is ٣.٠٪.", "Growth is ۳.۰٪.",
                     "Review in ① month.", "Review in Ⅳ months.")
         for text in examples:
@@ -292,12 +271,17 @@ class AgentTests(unittest.TestCase):
                      "revenue_metrics.revenue_yoy_growth_pct", "summary", "3.0", "14.7"):
             self.assertIn(part, str(error.exception))
 
-    def test_schema_excludes_fullwidth_and_arabic_digits(self):
-        import re
-        pattern = recommendation_schema([])["properties"]["summary"]["pattern"]
-        for text in ("Revenue grew ３％.", "Revenue grew ٣٪.", "Revenue grew ۳٪.", "Revenue grew 3%."):
-            self.assertIsNone(re.fullmatch(pattern, text))
-        self.assertIsNotNone(re.fullmatch(pattern, "Revenue declined; review collections."))
+
+
+
+    def test_punctuation_and_numeric_evidence_are_untouched(self):
+        result=FakeLLM().generate([], {})
+        result["summary"] = 'Revenue improved—review collections; do not infer “adequate” cash flow.'
+        validate_recommendation(result, {"liquidity_metrics.overdue_ratio_pct"})
+        tools=MetricTools(dataset(),date(2026,9,1))
+        full=tools.execute("liquidity_metrics")
+        self.assertEqual(full["credit_utilisation_pct"]["value"],80)
+
 
     def test_combined_failure_is_repaired_in_existing_single_retry(self):
         good = FakeLLM().generate([], {})

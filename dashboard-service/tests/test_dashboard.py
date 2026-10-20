@@ -65,6 +65,19 @@ class ReportTests(unittest.TestCase):
 
 
 class ApiTests(unittest.TestCase):
+    def test_public_openapi_keeps_login_public_and_report_protected(self):
+        response = self.client.get("/openapi.json")
+        self.assertEqual(response.status_code, 200)
+        schema = response.json()
+        self.assertEqual(schema["servers"][0]["url"], "/")
+        self.assertEqual(set(schema["paths"]), {"/api/dashboard/login", "/api/dashboard/msmes/{msme_id}"})
+        self.assertFalse(schema["paths"]["/api/dashboard/login"]["post"].get("security"))
+        report = schema["paths"]["/api/dashboard/msmes/{msme_id}"]["get"]
+        self.assertEqual(report["security"], [{"bearerAuth": []}])
+        self.assertIn("series", report["responses"]["200"]["content"]["application/json"]["schema"]["properties"])
+        self.repository.load.assert_not_called()
+        self.verifier.verify.assert_not_called()
+
     def setUp(self):
         self.verifier=Mock();self.verifier.verify.return_value=(7,'RM')
         self.access=Mock();self.repository=Mock();self.repository.load.return_value=dataset()

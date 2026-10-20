@@ -4,10 +4,13 @@ import RepresentativeManagement from "../components/RepresentativeManagement";
 import AssessmentWorkflow from "../components/AssessmentWorkflow";
 import ThresholdManagement from "../components/ThresholdManagement";
 import WarningWorkflow from "../components/WarningWorkflow";
+import FinancialAnalytics from "../components/FinancialAnalytics";
+import RecommendationWorkspace from "../components/RecommendationWorkspace";
 import { WorkflowPagination } from "../components/WorkflowUi";
 import { useEffect, useRef, useState } from "react";
 import {
   Activity,
+  BarChart3,
   ArrowRight,
   Building2,
   ChevronDown,
@@ -21,6 +24,7 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  Sparkles,
   TrendingUp,
   UserRound,
   Users,
@@ -795,6 +799,16 @@ export default function Dashboard() {
       icon: Wallet,
     },
     {
+      id: "analytics",
+      label: "Financial analytics",
+      icon: BarChart3,
+    },
+    {
+      id: "recommendations",
+      label: "Recommendations",
+      icon: Sparkles,
+    },
+    {
       id: "assessments",
       label: "Assessments",
       icon: Activity,
@@ -1147,8 +1161,8 @@ export default function Dashboard() {
                   </div>
                 )}
 
-              {(tab === "overview" ||
-                tab === "portfolio") &&
+              {(tab === "portfolio" ||
+                (tab === "overview" && user.role !== "RM")) &&
                 user.role !== "MSME_REP" && (
                   <section className="panel">
                     <div className="panel-heading">
@@ -1342,12 +1356,20 @@ export default function Dashboard() {
                     )}
                   </div>
 
-                  <BusinessWorkspace
+                  {tab === "analytics" ? <FinancialAnalytics
+                    key={`${selectedId}:${revision}:analytics`}
+                    business={selected}
+                    user={user}
+                  /> : tab === "recommendations" ? <RecommendationWorkspace
+                    key={`${selectedId}:${revision}:recommendations`}
+                    business={selected}
+                    user={user}
+                  /> : <BusinessWorkspace
                     key={`${selectedId}:${revision}`}
                     business={selected}
                     user={user}
                     tab={tab}
-                  />
+                  />}
                 </>
               )}
 

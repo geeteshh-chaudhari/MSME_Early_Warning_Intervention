@@ -28,6 +28,20 @@ def token(**overrides):
 
 
 class ApiTests(unittest.TestCase):
+    def test_public_openapi_documents_auth_and_does_not_read_financial_data(self):
+        response = self.client.get("/openapi.json")
+        self.assertEqual(response.status_code, 200)
+        schema = response.json()
+        self.assertEqual(schema["servers"][0]["url"], "/")
+        self.assertNotIn("/health", schema["paths"])
+        operation = schema["paths"]["/api/recommendations"]["post"]
+        self.assertEqual(operation["security"], [{"bearerAuth": []}])
+        self.assertIn("429", operation["responses"])
+        self.assertIn("evidence", operation["responses"]["200"]["content"]["application/json"]["schema"]["properties"])
+        self.access.authorize.assert_not_called()
+        self.repo.load.assert_not_called()
+        self.assertEqual(self.client.get("/docs").status_code, 404)
+
     def setUp(self):
         self.access = Mock()
         self.repo = Mock()
@@ -127,9 +141,9 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(result.status_code, 503)
         self.assertNotIn("secret", result.text)
 
-    def test_only_health_is_public(self):
+    def test_health_and_schema_are_public_but_local_ui_is_disabled(self):
         self.assertEqual(self.client.get("/health").status_code, 200)
-        for path in ("/docs", "/openapi.json"):
+        for path in ("/docs", "/redoc"):
             self.assertEqual(self.client.get(path).status_code, 404)
 
 

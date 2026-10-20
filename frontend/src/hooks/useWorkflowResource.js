@@ -9,7 +9,7 @@ export function useWorkflowResource(path, token, revision = 0) {
     const controller = new AbortController();
     apiRequest(path, { token, signal: controller.signal })
       .then(data => { if (!controller.signal.aborted) setResult({ key, data }); })
-      .catch(error => { if (!controller.signal.aborted) setResult({ key, error: error.message }); });
+      .catch(error => { if (!controller.signal.aborted) setResult({ key, error: error.message, errorStatus: error.status }); });
     return () => controller.abort();
   }, [path, token, revision, key]);
   return !path ? { loading: false } : result?.key === key
