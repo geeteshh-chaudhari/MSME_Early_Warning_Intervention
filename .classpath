@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+	<classpathentry kind="src" path="api-gateway/src/main/java"/>
+	<classpathentry kind="src" path="api-gateway/src/test/java"/>
+	<classpathentry kind="src" path="RegistryServer/src/main/java"/>
+	<classpathentry kind="src" path="RegistryServer/src/test/java"/>
+	<classpathentry kind="src" path="warning-intervention-service/src/main/java"/>
+	<classpathentry kind="src" path="warning-intervention-service/src/test/java"/>
+	<classpathentry kind="output" path="bin"/>
+</classpath>

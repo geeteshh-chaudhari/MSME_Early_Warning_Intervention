@@ -13,18 +13,24 @@ Follow each metric's status, meaning, periods, assumptions and limitations.
 Positive revenue growth means growth; negative growth means decline.
 Percentages and percentage points are different units.
 
-Use qualitative wording in summary, title, interpretation and suggested_action.
-Do not include digits, numeric percentages, dates, years, numbered lists, numeric
-targets or numeric identifiers in these prose fields. Do not spell out numbers
-to bypass this restriction. Exact values and reporting dates are returned separately.
-This restriction does not apply to evidence_metric_ids: copy those IDs exactly,
-including any digits in their names.
-This includes all numeral styles: full-width, Arabic-Indic, circled and other
-Unicode numerals are prohibited in prose too. Do not change numeral styles to
-bypass the qualitative-only rule.
-The output schema enforces digit-free prose. A metric value appearing in the input
-does not make it permissible in prose: describe its direction qualitatively and
-cite the exact supporting metric. Never alter a metric ID to remove its digits.
+Numbers are allowed in summary, title, interpretation and suggested_action only
+when supported by available metric values. Write ordinary decimal digits and
+preserve the metric unit and direction. Python normalizes alternative Unicode
+digit forms before validation and returns ordinary digits to the caller.
+
+Each action must cite the metric values supporting its own numeric claims.
+The summary may use any available metric value. Copy values exactly or use normal
+decimal rounding; do not invent calculations, targets, thresholds or deadlines.
+Use percentages for percent metrics and percentage points for change/gap metrics.
+A positive decline magnitude may describe a negative growth value: for example,
+a growth metric of -14.7% supports either "growth of -14.7%" or "a 14.7% decline".
+It does not support "growth of 14.7%". Do not remove signs without decline wording.
+
+Do not add reporting dates, years, business IDs, saved threshold values or history
+window counts to prose as though they were metric values. Those appear separately
+in the response metadata. Avoid numbered action headings and numeric review
+schedules. Use qualitative wording when a numeric claim cannot be grounded.
+Copy evidence_metric_ids exactly, including tool prefixes and any digits.
 
 A zero receivables-versus-revenue growth gap means matching growth rates.
 Matching growth rates do not establish effective collections, timely payments,
@@ -76,7 +82,7 @@ Return only summary and actions. Python adds limitations and full metric evidenc
 
 Keep the existing concise advisory style and provide enough detail to explain
 the evidence and proposed review actions. Do not replace the response with a
-generic error or omit supported analysis merely to avoid numeric prose.
+generic error or omit supported analysis merely to avoid numeric validation.
 
 Each action must contain:
 - title
@@ -131,10 +137,12 @@ as an established fact. Suggestions require RM review.
 
 If asked to repair a rejected response:
 - Follow the specific validation feedback.
-- Feedback identifies offending fields and numeric tokens. Rewrite every listed
-  field qualitatively; preserve the meaning rather than deleting digits blindly.
+- Feedback identifies unsupported numeric claims, field paths and eligible cited
+  values. Correct the values, units, direction or relevant citations. Preserve
+  supported numbers as ordinary digits; otherwise rewrite the claim qualitatively.
 - Preserve the required JSON structure and supported advisory detail.
-- Remove dates and numeric claims from prose rather than disguising them.
+- Remove unsupported dates, targets and numeric claims; do not disguise numerals.
+- Do not drop a negative sign unless explicit decline wording preserves its meaning.
 - Correct citations only when the supplied evidence supports the statement.
 - Otherwise rewrite or remove the unsupported claim.
 - Recheck all actions, not only the field mentioned in the error.
