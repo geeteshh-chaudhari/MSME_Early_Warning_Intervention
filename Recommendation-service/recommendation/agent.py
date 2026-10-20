@@ -1,11 +1,11 @@
 import json
 import re
-import unicodedata
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
 from .config import ROOT
 from .metrics import TOOL_DESCRIPTIONS
+from .numeric_prose import normalize_recommendation, numeric_errors
 
 
 def json_default(value):
@@ -101,6 +101,9 @@ class RecommendationAgent:
         metric_values = {f"{tool}.{key}": item["value"] for tool, values in results.items()
                          if tool != "business_context" for key, item in values.items()
                          if item["status"] == "available"}
+        metric_units = {f"{tool}.{key}": item["unit"] for tool, values in results.items()
+                        if tool != "business_context" for key, item in values.items()
+                        if item["status"] == "available"}
         messages = [{"role": "system", "content": self.prompt},
             {"role": "user", "content": compact_dumps({"phase": "recommend", "question": question,
                 "tool_results": compact_tool_results(results)})}]
@@ -108,7 +111,7 @@ class RecommendationAgent:
         # supplied to Ollama via format; do not duplicate it in the prompt.
         # One repair attempt for small-model schema mistakes, never silent acceptance.
         for attempt in range(2):
-            recommendation = self.llm.generate(messages, schema)
+            recommendation = normalize_recommendation(self.llm.generate(messages, schema))
             import sys
             print(
                   "LLM RESPONSE:\n" + json.dumps(
@@ -117,7 +120,7 @@ class RecommendationAgent:
                   file=sys.stderr,
             )
             try:
-                validate_recommendation(recommendation, available, metric_values)
+                validate_recommendation(recommendation, available, metric_values, metric_units)
                 break
             except ValueError as ex:
                 if attempt:
@@ -126,7 +129,9 @@ class RecommendationAgent:
                 messages.append({"role": "user", "content": (
                     "Repair the rejected JSON using this validation feedback: " + str(ex)
                     + " Preserve the required fields and supported advisory detail. "
-                    "Rewrite numeric prose qualitatively; do not spell out numbers or simply delete digits. "
+                    "Keep supported numeric claims as ordinary decimal digits. Correct unsupported values, "
+                    "units, direction or citations; otherwise rewrite that claim qualitatively. "
+                    "A positive decline magnitude is allowed only for a negative cited growth metric. "
                     "Use exact available metric IDs supporting each action's claims. "
                     "Annual revenue and receivables growth claims need their respective growth metrics; "
                     "credit utilisation/headroom cannot substitute for them. "
@@ -154,11 +159,8 @@ class RecommendationAgent:
 
 
 def recommendation_schema(evidence_ids):
-    # Constrain prose during decoding, rather than relying on prompt adherence.
-    # Citation IDs are separate: their legitimate digits must remain allowed.
-    # Block common alternative decimal glyphs as well as ASCII digits during
-    # decoding. Python validation below also covers other Unicode numerals.
-    prose = {"type": "string", "minLength": 1, "pattern": "^[^0-9０-９٠-٩۰-۹]*$"}
+    # Numeric claims are permitted; Python normalizes them and checks evidence.
+    prose = {"type": "string", "minLength": 1}
     return {"type": "object", "properties": {
         "summary": dict(prose),
         "actions": {"type": "array", "maxItems": 6, "items": {"type": "object",
@@ -171,8 +173,8 @@ def recommendation_schema(evidence_ids):
         "required": ["summary", "actions"], "additionalProperties": False}
 
 
-def validate_recommendation(value, available, metric_values=None):
-    if set(value) != {"summary", "actions"} or not isinstance(value["summary"], str) or not value["summary"].strip():
+def validate_recommendation(value, available, metric_values=None, metric_units=None):
+    if not isinstance(value, dict) or set(value) != {"summary", "actions"} or not isinstance(value["summary"], str) or not value["summary"].strip():
         raise ValueError("Return only summary and actions with a nonempty summary; Python adds data limitations.")
     if not isinstance(value["actions"], list) or len(value["actions"]) > 6:
         raise ValueError("actions must be a list of at most six items.")
@@ -193,30 +195,18 @@ def validate_recommendation(value, available, metric_values=None):
             detail = (f"; exact available ID is {matches[0]!r}" if len(matches) == 1
                       else "; choose an exact available metric ID supporting the claim")
             citation_errors.append(f"actions[{index}].evidence_metric_ids contains invalid ID {citation!r}{detail}")
-    # Match the schema and RISCOR policy: all prose is qualitative, even when
-    # a number matches evidence. Exact numeric evidence remains unchanged.
-    numeric_fields = []
-    def check_prose(path, text):
-        # Normalize only for checking/feedback, never silently rewrite output.
-        normalized = unicodedata.normalize("NFKC", text)
-        tokens = list(dict.fromkeys(re.findall(r"\d+(?:[.,]\d+)*", normalized)))
-        other_numerals = list(dict.fromkeys(char for char in text if char.isnumeric()))
-        if tokens:
-            numeric_fields.append(f"{path} contains numeric tokens {tokens!r}")
-        elif other_numerals:
-            numeric_fields.append(f"{path} contains Unicode numerals {other_numerals!r}")
-    check_prose("summary", value["summary"])
+    numeric_fields = numeric_errors("summary", value["summary"], available, metric_values, metric_units)
     for index, item in enumerate(value["actions"]):
         for field in ("title", "interpretation", "suggested_action"):
-            check_prose(f"actions[{index}].{field}", item[field])
+            numeric_fields.extend(numeric_errors(f"actions[{index}].{field}", item[field],
+                                                item["evidence_metric_ids"], metric_values, metric_units))
     if citation_errors or numeric_fields:
         errors = []
         if citation_errors:
             errors.append("Citation errors: " + "; ".join(citation_errors))
         if numeric_fields:
-            errors.append("Qualitative prose required: " + "; ".join(numeric_fields)
-                          + ". Rewrite these fields without figures, dates, numeric targets or alternate Unicode numerals")
-        raise ValueError(". ".join(errors) + ". Keep exact values in separately returned metric evidence. "
+            errors.append("Numeric evidence validation failed: " + "; ".join(numeric_fields))
+        raise ValueError(". ".join(errors) + ". Keep supported figures as ordinary digits. "
                          "Use fully qualified citation IDs exactly as supplied, including the tool prefix; "
                          "correct invalid IDs only if the underlying metric supports the claim.")
     text = " ".join([value["summary"]] + [item[key] for item in value["actions"]
