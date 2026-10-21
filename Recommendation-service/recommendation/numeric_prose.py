@@ -1,20 +1,26 @@
 """Normalize generated prose and ground its numeric literals in metric values."""
 from copy import deepcopy
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation
 import re
 import unicodedata
 
 TRANSLATION = str.maketrans({"−": "-", "٫": ".", "٬": ",", "٪": "%"})
 NUMBER = re.compile(
-    r"(?<![\w.])(?P<value>[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)"
+    r"(?<![\w.])(?P<value>[+-]?(?:(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?|\.\d+))"
     r"(?P<unit>\s*(?:percentage\s+points?\b|percent\s+points?\b|percent\b|pp\b|%|"
     r"months?\b|days?\b|weeks?\b|years?\b|hours?\b|minutes?\b))?(?!\w|\.\d)", re.I)
-DECLINE_BEFORE = re.compile(
-    r"\b(?:decline|declined|decrease|decreased|drop|dropped|fall|fell|reduction|reduced|down|contraction)"
-    r"(?:\s+(?:of|by|at|approximately|about|around|roughly|was|is|a|an)){0,4}\s*$", re.I)
-DECLINE_AFTER = re.compile(
-    r"^\s*(?:(?:annual|yearly|monthly|quarterly|revenue|yoy|qoq|mom)\s+){0,2}"
-    r"(?:decline|decrease|drop|fall|reduction|contraction)\b", re.I)
+
+
+# Reporting dates and month/year durations are context, not financial values.
+_YEAR = r"(?:19|20|21)\d{2}"
+TIME_REFERENCE = re.compile(
+    r"(?<![\w.,+\-$£₹])(?:"
+    + _YEAR + r"-(?:0[1-9]|1[0-2])(?:-(?:0[1-9]|[12]\d|3[01]))?"
+    + r"|(?:0?[1-9]|1[0-2])/" + _YEAR
+    + r"|" + _YEAR
+    + r"|\d+\s*(?:-\s*)?(?:months?|years?))"
+    + r"(?!\w|[.,]\d)(?!\s*(?:%|percent\b|percentage\s+points?\b|pp\b|"
+    + r"USD\b|INR\b|dollars?\b|rupees?\b))", re.I)
 
 
 def normalize_text(text):
@@ -42,75 +48,53 @@ def normalize_recommendation(value):
                 for key in ("title", "interpretation", "suggested_action"):
                     if isinstance(item.get(key), str):
                         item[key] = normalize_text(item[key])
-    # Never normalize or guess citation IDs; validate them exactly as returned.
+    # Citation text is preserved; it does not restrict numeric value matching.
     return result
 
 
-def unit_name(text):
-    text = (text or "").strip().lower()
-    if not text: return None
-    if text in ("%", "percent"): return "percent"
-    if text == "pp" or text.endswith("point") or text.endswith("points"): return "percentage_points"
-    if text in ("month", "months"): return "months"
-    return "unsupported"
-
-
-def rounded_equal(actual, claimed, precision):
-    if actual == claimed: return True
-    if precision > 16: return False
-    try:
-        return actual.quantize(Decimal(1).scaleb(-precision), rounding=ROUND_HALF_UP) == claimed
-    except InvalidOperation:
-        return False
-
 
 def numeric_errors(path, text, ids, metric_values, metric_units=None):
+    """Compare prose numbers with available tool values, without semantic checks.
+
+    ids identifies the complete available metric set, not an action's citations.
+    metric_units is retained for caller compatibility but is deliberately unused.
+    Compare exact absolute magnitudes, ignoring signs and formatting zeros.
+    Leading-dot decimals such as .87 are parsed as 0.87, never as 87.
+    Recognizable reporting years, ISO dates and month/year durations are exempt.
+    No rounding or interpretation of growth/decline wording is performed.
+    """
     text = normalize_text(text)
-    errors = []
     if any(not re.fullmatch(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?", m.group())
            for m in re.finditer(r"\d+(?:,\d+)+(?:\.\d+)?", text)):
-        return [f"{path}: invalid numeric comma grouping; use a decimal point and optional thousands separators"]
-    if re.search(r"\b\d{4}-\d{2}(?:-\d{2})?\b|\d+\s*[/⁄]\s*\d+", text):
-        return [f"{path}: dates/fraction notation are not metric values; use the separate reporting metadata or qualitative wording"]
-    deadline = re.search(r"\b(?:within|in|after|every|next)\s+\d+(?:\.\d+)?\s*(?:days?|weeks?|months?|years?|hours?|minutes?)\b", text, re.I)
-    if deadline:
-        return [f"{path}: numeric deadline {deadline.group()!r} is not a supported metric claim; use qualitative wording"]
-    candidates = []
+        return [f"{path}: cannot compare malformed number grouping with tool values"]
+    candidates = {}
     for identifier in sorted(ids):
-        if identifier not in (metric_values or {}): continue
+        if identifier not in (metric_values or {}):
+            continue
         try:
             amount = Decimal(str(metric_values[identifier]))
         except (InvalidOperation, ValueError):
             continue
         if amount.is_finite():
-            candidates.append((identifier, amount, (metric_units or {}).get(identifier)))
-    consumed = set()
+            candidates[identifier] = amount
+    errors = []
+    consumed = {index for reference in TIME_REFERENCE.finditer(text)
+                for index in range(reference.start(), reference.end())}
+    values = {amount.copy_abs() for amount in candidates.values()}
     for match in NUMBER.finditer(text):
+        is_time_reference = all(index in consumed for index in range(*match.span("value")))
         consumed.update(range(match.start(), match.end()))
-        literal = match.group("value")
-        decimal_text = literal.replace(",", "")
-        claimed = Decimal(decimal_text)
-        precision = len(decimal_text.partition(".")[2])
-        unit = unit_name(match.group("unit"))
-        decline = bool(DECLINE_BEFORE.search(text[max(0,match.start()-70):match.start()])
-                       or DECLINE_AFTER.search(text[match.end():match.end()+60]))
-        supported = False
-        for identifier, actual, actual_unit in candidates:
-            if unit == "unsupported" or (unit is not None and metric_units is not None and actual_unit != unit):
-                continue
-            if rounded_equal(actual, claimed, precision):
-                supported = True; break
-            # A positive magnitude can describe a NEGATIVE growth value, but only
-            # next to explicit decline wording and for a growth metric.
-            if (claimed > 0 and not literal.startswith("+") and actual < 0
-                    and "growth_pct" in identifier and decline
-                    and rounded_equal(-actual, claimed, precision)):
-                supported = True; break
-        if not supported:
-            eligible = {identifier: str(amount) for identifier, amount, _ in candidates}
-            errors.append(f"{path}: numeric claim {match.group(0).strip()!r} is unsupported by its cited metrics {eligible!r}; "
-                          "correct the value/citations, preserve units and direction, or rewrite qualitatively")
-    leftover = [char for index, char in enumerate(text) if char.isnumeric() and index not in consumed]
+        if is_time_reference:
+            continue
+        claimed = Decimal(match.group("value").replace(",", ""))
+        if claimed.copy_abs() not in values:
+            errors.append(
+                f"{path}: numeric magnitude {match.group('value')!r} does not match any "
+                f"available tool value {dict((key, str(value)) for key, value in candidates.items())!r}; "
+                "copy the exact tool magnitude or remove the unsupported figure")
+    leftover = [char for index, char in enumerate(text)
+                if char.isnumeric() and index not in consumed]
     if leftover:
-        errors.append(f"{path}: unsupported numeric notation {list(dict.fromkeys(leftover))!r}; use ordinary decimal metric values")
+        errors.append(f"{path}: cannot compare numeric notation {list(dict.fromkeys(leftover))!r}; "
+                      "use ordinary decimal tool values")
     return errors

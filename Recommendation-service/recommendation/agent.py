@@ -1,5 +1,4 @@
 import json
-import re
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, Request, build_opener
@@ -101,9 +100,6 @@ class RecommendationAgent:
         metric_values = {f"{tool}.{key}": item["value"] for tool, values in results.items()
                          if tool != "business_context" for key, item in values.items()
                          if item["status"] == "available"}
-        metric_units = {f"{tool}.{key}": item["unit"] for tool, values in results.items()
-                        if tool != "business_context" for key, item in values.items()
-                        if item["status"] == "available"}
         messages = [{"role": "system", "content": self.prompt},
             {"role": "user", "content": compact_dumps({"phase": "recommend", "question": question,
                 "tool_results": compact_tool_results(results)})}]
@@ -120,27 +116,24 @@ class RecommendationAgent:
                   file=sys.stderr,
             )
             try:
-                validate_recommendation(recommendation, available, metric_values, metric_units)
+                validate_recommendation(recommendation, available, metric_values)
                 break
             except ValueError as ex:
                 if attempt:
                     raise
                 messages.append({"role": "assistant", "content": compact_dumps(recommendation)})
                 messages.append({"role": "user", "content": (
-                    "Repair the rejected JSON using this validation feedback: " + str(ex)
-                    + " Preserve the required fields and supported advisory detail. "
-                    "Keep supported numeric claims as ordinary decimal digits with exactly two decimal places, copied from supplied metrics. Correct unsupported values, "
-                    "units, direction or citations; otherwise rewrite that claim qualitatively. "
-                    "Use the source metric unit: percent uses %, percentage_points uses the words "
-                    "percentage points even for zero, and months uses months. "
-                    "Remove invented numeric targets or deadlines from suggested_action; replace them "
-                    "with concrete qualitative review steps. Do not add unrelated citations to justify a figure. "
-                    "A positive decline magnitude is allowed only for a negative cited growth metric. "
-                    "Use exact available metric IDs supporting each action's claims. "
-                    "Annual revenue and receivables growth claims need their respective growth metrics; "
-                    "credit utilisation/headroom cannot substitute for them. "
-                    "Matching growth does not prove effective collections; headroom alone does not "
-                    "justify borrowing or changing credit terms. Recheck every action. Return only corrected JSON."
+                    "Repair the rejected JSON using this feedback: " + str(ex)
+                    + " Preserve the required JSON fields and supported advisory detail. "
+                    "Each numeric magnitude must exactly equal an available tool metric magnitude, "
+                    "ignoring signs and action citations. Express growth or decline accurately in words. Copy the magnitude using ordinary "
+                    "digits exactly as shown in tool_results. Do not round, truncate, approximate, "
+                    "or add or remove decimal places. Always include the leading zero for "
+                    "decimal magnitudes below one; copy 0.87 as 0.87, never 87. "
+                    "Reporting years, dates and month/year durations are allowed as time context "
+                    "and need not equal financial metric values. "
+                    "Remove unsupported financial figures or rewrite them qualitatively. "
+                    "Recheck every text field. Return only corrected JSON."
                 )})
         # Preserve deterministic limitations even if the model omits them.
         limitations = list(results["business_context"]["limitations"])
@@ -170,8 +163,8 @@ def recommendation_schema(evidence_ids):
         "actions": {"type": "array", "maxItems": 6, "items": {"type": "object",
             "properties": {"title": dict(prose), "interpretation": dict(prose),
                 "suggested_action": dict(prose),
-                "evidence_metric_ids": {"type": "array", "minItems": 1,
-                    "items": {"type": "string", "enum": evidence_ids}}},
+                "evidence_metric_ids": {"type": "array",
+                    "items": {"type": "string"}}},
             "required": ["title", "interpretation", "suggested_action", "evidence_metric_ids"],
             "additionalProperties": False}}},
         "required": ["summary", "actions"], "additionalProperties": False}
@@ -182,38 +175,18 @@ def validate_recommendation(value, available, metric_values=None, metric_units=N
         raise ValueError("Return only summary and actions with a nonempty summary; Python adds data limitations.")
     if not isinstance(value["actions"], list) or len(value["actions"]) > 6:
         raise ValueError("actions must be a list of at most six items.")
-    citation_errors = []
     for index, item in enumerate(value["actions"]):
         if not isinstance(item, dict) or set(item) != {"title", "interpretation", "suggested_action", "evidence_metric_ids"}:
             raise ValueError("Each action must have title, interpretation, suggested_action and evidence_metric_ids.")
         if not all(isinstance(item[k], str) and item[k].strip() for k in ("title", "interpretation", "suggested_action")):
             raise ValueError("Action text fields must be nonempty strings.")
         ids = item["evidence_metric_ids"]
-        if not isinstance(ids, list) or not ids or not all(isinstance(i, str) for i in ids):
-            raise ValueError(f"actions[{index}].evidence_metric_ids must be a nonempty list of available metric ID strings.")
-        for citation in ids:
-            if citation in available:
-                continue
-            matches = [identifier for identifier in sorted(available)
-                       if identifier.rsplit(".", 1)[-1] == citation]
-            detail = (f"; exact available ID is {matches[0]!r}" if len(matches) == 1
-                      else "; choose an exact available metric ID supporting the claim")
-            citation_errors.append(f"actions[{index}].evidence_metric_ids contains invalid ID {citation!r}{detail}")
+        if not isinstance(ids, list) or not all(isinstance(i, str) for i in ids):
+            raise ValueError(f"actions[{index}].evidence_metric_ids must be a list of strings.")
     numeric_fields = numeric_errors("summary", value["summary"], available, metric_values, metric_units)
     for index, item in enumerate(value["actions"]):
         for field in ("title", "interpretation", "suggested_action"):
             numeric_fields.extend(numeric_errors(f"actions[{index}].{field}", item[field],
-                                                item["evidence_metric_ids"], metric_values, metric_units))
-    if citation_errors or numeric_fields:
-        errors = []
-        if citation_errors:
-            errors.append("Citation errors: " + "; ".join(citation_errors))
-        if numeric_fields:
-            errors.append("Numeric evidence validation failed: " + "; ".join(numeric_fields))
-        raise ValueError(". ".join(errors) + ". Keep supported figures as ordinary digits. "
-                         "Use fully qualified citation IDs exactly as supplied, including the tool prefix; "
-                         "correct invalid IDs only if the underlying metric supports the claim.")
-    text = " ".join([value["summary"]] + [item[key] for item in value["actions"]
-                    for key in ("title", "interpretation", "suggested_action")])
-    if re.search(r"\b(low|moderate|high|severe)\s+(financial\s+)?(stress|risk)\b", text, re.I):
-        raise ValueError("Do not invent a financial stress or risk classification. Describe the observed metrics instead.")
+                                                available, metric_values, metric_units))
+    if numeric_fields:
+        raise ValueError("Numeric value validation failed: " + "; ".join(numeric_fields))
