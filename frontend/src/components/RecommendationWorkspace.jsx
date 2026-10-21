@@ -8,7 +8,6 @@ import EvidenceExplorer from "./EvidenceExplorer";
 const defaultQuestion = "Interpret financial trends, seasonal context and propose RM review actions.";
 
 function RecommendationRequest({ business, user, month }) {
-  const [question, setQuestion] = useState(defaultQuestion);
   const [metricsOnly, setMetricsOnly] = useState(false);
   const [state, setState] = useState({ busy: false, data: null, error: "", info: "" });
   const [focusedMetric, setFocusedMetric] = useState("");
@@ -19,12 +18,12 @@ function RecommendationRequest({ business, user, month }) {
   function clearResult() { setState({ busy: false, data: null, error: "", info: "" }); setFocusedMetric(""); }
   async function submit(event) {
     event.preventDefault();
-    if (controller.current || !question.trim()) return;
+    if (controller.current) return;
     const current = ++sequence.current;
     const request = new AbortController(); controller.current = request;
     setState({ busy: true, data: null, error: "", info: "" }); setFocusedMetric("");
     try {
-      const data = await requestRecommendation(user.accessToken, { msme_id: Number(business.msmeId), as_of: month, metrics_only: metricsOnly, question: question.trim() }, request.signal);
+      const data = await requestRecommendation(user.accessToken, { msme_id: Number(business.msmeId), as_of: month, metrics_only: metricsOnly, question: defaultQuestion }, request.signal);
       if (current === sequence.current) setState({ busy: false, data, error: "", info: "" });
     } catch (error) {
       if (current === sequence.current && error.name !== "AbortError") setState({ busy: false, data: null, error: insightsError(error, "recommendation"), info: "" });
@@ -42,14 +41,13 @@ function RecommendationRequest({ business, user, month }) {
   const evidence = data?.evidence || {};
   const entries = flattenEvidence(evidence);
   const advice = data?.recommendation;
-  const limitations = [...new Set([...(advice?.limitations || []), ...(evidence.business_context?.limitations || [])])];
   return <>
     <section className="panel"><div className="panel-heading"><div><h2><Sparkles size={19} /> Recommendations & evidence</h2><p>Analyse {business.businessName} for {monthLabel(month)}.</p></div></div>
       <form className="workflow-inset" onSubmit={submit}>
         {state.error && <div className="notice error" role="alert">{state.error}</div>}{state.info && <div className="notice workflow-info" role="status">{state.info}</div>}
         <fieldset className="snapshot-fieldset" disabled={state.busy}><div className="snapshot-fields"><div className="snapshot-field"><label htmlFor="recommendation-mode">Analysis mode</label><select id="recommendation-mode" value={metricsOnly ? "evidence" : "advice"} onChange={e => { setMetricsOnly(e.target.value === "evidence"); clearResult(); }}><option value="advice">Generate recommendations</option><option value="evidence">Evidence only — no model required</option></select><small className="management-help">Evidence is calculated by the service. Recommendations use its configured local model and require human review.</small></div>
-          <div className="snapshot-field"><label htmlFor="recommendation-question">Question or focus</label><textarea id="recommendation-question" value={question} maxLength={2000} onChange={e => { setQuestion(e.target.value); clearResult(); }} required /></div></div>
-          <div className="snapshot-actions"><button type="submit" className="button primary" disabled={!question.trim()}><Sparkles size={16} />{state.busy ? "Analysing…" : metricsOnly ? "Load evidence" : "Generate recommendations"}</button></div>
+        </div>
+          <div className="snapshot-actions"><button type="submit" className="button primary"><Sparkles size={16} />{state.busy ? "Analysing…" : metricsOnly ? "Load evidence" : "Generate recommendations"}</button></div>
         </fieldset>
         {state.busy && <div className="recommendation-progress" role="status"><span><RefreshCw className="spin" size={18} />{metricsOnly ? "Calculating financial evidence…" : "Generating advice from financial evidence. The local model may take a few minutes."}</span><button type="button" className="button secondary" onClick={cancel}><X size={15} />Cancel request</button></div>}
         <p className="management-help">This analysis does not change financial records, warning decisions or intervention plans.</p>
@@ -61,7 +59,6 @@ function RecommendationRequest({ business, user, month }) {
       {data.status === "insufficient_data" && <div className="notice workflow-info">There is not enough usable evidence for recommendations. Review unavailable metrics and their reasons below.</div>}
       {advice && <section className="panel"><div className="panel-heading"><div><h2>Analysis summary</h2><p>Advisory interpretation · review the evidence before taking action</p></div></div><p className="workflow-inset recommendation-summary">{advice.summary}</p></section>}
       {advice?.actions?.length > 0 && <section className="panel"><div className="panel-heading"><div><h2>Suggested actions</h2><p>Each action links to the metric evidence returned with this analysis.</p></div></div><div className="recommendation-actions">{advice.actions.map((item, index) => <article className="recommendation-action" key={`${index}:${item.title}`}><span className="recommendation-step">{String(index + 1).padStart(2, "0")}</span><div><h3>{item.title}</h3><p>{item.interpretation}</p><div className="recommended-action">{item.suggested_action}</div><div className="recommendation-citations">{(item.evidence_metric_ids || []).map(id => { const entry = entries.find(entry => entry.id === id); return <button key={id} className="evidence-citation" disabled={!entry} onClick={() => inspect(id)} title={id}>{entry ? `${metricLabel(entry.key)} · ${metricValue(entry.item)}` : `${id} · Evidence unavailable`}</button>; })}</div></div></article>)}</div></section>}
-      {limitations.length > 0 && <section className="panel"><div className="panel-heading"><div><h2>Limitations & review notes</h2><p>Model citations support inspection; they do not guarantee the interpretation is correct.</p></div></div><ul className="insights-notes">{limitations.map(note => <li key={note}>{note}</li>)}</ul></section>}
       <div ref={evidenceRef}><EvidenceExplorer key={focusedMetric || "all"} evidence={evidence} focusedMetricId={focusedMetric} /></div>
       {data.tool_trace?.length > 0 && <details className="panel insights-trace"><summary>Analysis tools used</summary><ol>{data.tool_trace.map((step, index) => <li key={`${step.step}:${index}`}>{step.tool}</li>)}</ol></details>}
     </>}
