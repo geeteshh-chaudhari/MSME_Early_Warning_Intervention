@@ -41,6 +41,19 @@ public class WarningService {
         if (warnings.findByAssessmentId(assessment.getAssessmentId()).isPresent()) {
             throw new DuplicateResourceException("A warning already exists for this assessment");
         }
+        return createFromEvidence(assessment, false);
+    }
+
+    /** Called by reconciliation while it holds the assessment row lock. */
+    public WarningResponse createAutomatic(Long assessmentId) {
+        var assessment = assessment(assessmentId);
+        if ("HEALTHY".equals(assessment.getSeverity())) return null;
+        var existing = warnings.findByAssessmentId(assessmentId);
+        if (existing.isPresent()) return ResponseMapper.toResponse(existing.get());
+        return createFromEvidence(assessment, true);
+    }
+
+    private WarningResponse createFromEvidence(RiskAssessment assessment, boolean automatic) {
         var breaches = indicators.findByAssessmentIdOrderByIndicatorCode(assessment.getAssessmentId())
                 .stream().filter(i -> "Y".equals(i.getBreachedFlag())).toList();
         if (breaches.isEmpty()) throw new InvalidRequestException("Assessment has no breached indicators");
@@ -54,14 +67,20 @@ public class WarningService {
                     i.getIndicatorCode() + " = " + i.getCalculatedValue() + ", threshold = "
                     + i.getThresholdValueUsed() + ". "
                     + Objects.toString(i.getExplanationText(), "")).collect(Collectors.joining("; ")));
-        warning.setRecommendedAction(switch (warning.getPrimaryDriver()) {
+        warning.setRecommendedAction(automatic ? RecommendationWorkflow.UNAVAILABLE : switch (warning.getPrimaryDriver()) {
             case "REVENUE_DETERIORATION" -> "Review revenue decline and agree a cash-flow recovery plan.";
             case "OVERDUE_RECEIVABLES" -> "Review overdue invoices and agree a collections plan.";
             default -> "Review credit utilisation and agree a working-capital plan.";
         });
         warning.setCreatedAt(LocalDateTime.now());
         warnings.saveAndFlush(warning);
-        audit(warning, "WARNING_CREATED", "Warning created from stored assessment evidence", null, "OPEN");
+        if (automatic) {
+            systemAudit(warning, "WARNING_CREATED", "Warning created from stored assessment evidence",
+                    "{\"previousStatus\":null,\"nextStatus\":\"OPEN\",\"assessmentId\":"
+                            + assessment.getAssessmentId() + "}");
+        } else {
+            audit(warning, "WARNING_CREATED", "Warning created from stored assessment evidence", null, "OPEN");
+        }
         return ResponseMapper.toResponse(warning);
     }
 
@@ -138,6 +157,30 @@ public class WarningService {
     }
 
     static boolean isClosed(Warning w) { return Set.of("CLOSED", "CLOSED_REVIEWED").contains(w.getWarningStatus()); }
+
+    public boolean isEscalated(Long id) {
+        var warning = warnings.findById(id).orElseThrow(() -> new ResourceNotFoundException("Warning not found"));
+        return "ESCALATED".equals(warning.getWarningStatus())
+                || activities.existsByRelatedEntityTypeAndRelatedEntityIdAndActionCode("WARNING", id, "ESCALATE")
+                || activities.existsByRelatedEntityTypeAndRelatedEntityIdAndActionCode("WARNING", id, "FOLLOW_UP_ESCALATED");
+    }
+
+    void requireOwner(Warning warning) {
+        access.requireRole(isEscalated(warning.getWarningId()) ? "RISK_ADMIN" : "RM");
+    }
+
+    public void systemAudit(Warning warning, String action, String description, String metadata) {
+        var entry = new ActivityLog();
+        entry.setMsmeId(assessment(warning.getAssessmentId()).getMsmeId());
+        entry.setActorType("SYSTEM");
+        entry.setActionCode(action);
+        entry.setRelatedEntityType("WARNING");
+        entry.setRelatedEntityId(warning.getWarningId());
+        entry.setDescription(description);
+        entry.setCreatedAt(LocalDateTime.now());
+        entry.setMetadataJson(metadata == null ? "{}" : metadata);
+        activities.save(entry);
+    }
 
     static void requireState(Warning w, String... allowed) {
         if (!Arrays.asList(allowed).contains(w.getWarningStatus())) {
