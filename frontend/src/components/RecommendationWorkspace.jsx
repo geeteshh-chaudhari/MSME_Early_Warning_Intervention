@@ -5,7 +5,7 @@ import { useReportingPeriod } from "../hooks/useReportingPeriod";
 import { flattenEvidence, metricLabel, metricValue, monthLabel } from "./insightsFormat";
 import EvidenceExplorer from "./EvidenceExplorer";
 
-const defaultQuestion = "Interpret financial trends, seasonal context and propose RM review actions.";
+const defaultQuestion = "Review revenue trends and suggest collection actions.";
 
 function RecommendationRequest({ business, user, month }) {
   const [metricsOnly, setMetricsOnly] = useState(false);
