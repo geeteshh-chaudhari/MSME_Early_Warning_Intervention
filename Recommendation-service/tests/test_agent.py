@@ -157,17 +157,14 @@ class AgentTests(unittest.TestCase):
         payload = json.loads(messages[1]["content"])
         self.assertEqual(set(payload), {"phase", "question", "tool_results"})
         self.assertEqual(payload["phase"], "recommend")
-        citations = schema["properties"]["actions"]["items"]["properties"]["evidence_metric_ids"]["items"]["enum"]
-        expected = sorted(f"{group}.{key}" for group, values in result["evidence"].items()
-                          if group != "business_context" for key,item in values.items()
-                          if item["status"] == "available")
-        self.assertEqual(citations, expected)
+        citation_schema = schema["properties"]["actions"]["items"]["properties"]["evidence_metric_ids"]
+        self.assertEqual(citation_schema, {"type": "array", "items": {"type": "string"}})
         self.assertEqual(schema["properties"]["actions"]["maxItems"], 6)
 
     def test_repair_retained_and_invalid_second_output_still_fails(self):
         good = FakeLLM().generate([], {})
         bad = deepcopy(good)
-        bad["actions"][0]["evidence_metric_ids"] = ["execute_sql"]
+        bad["actions"][0]["interpretation"] = "The value is 999.12%."
         for responses, fails in (([bad,good],False),([bad,bad],True)):
             class RepairLLM:
                 def __init__(self): self.calls = 0
@@ -204,17 +201,19 @@ class AgentTests(unittest.TestCase):
         self.assertEqual(captured[0]["options"],{"temperature":0,"num_ctx":16384,"num_predict":1800})
         self.assertFalse(captured[0]["think"])
 
-    def test_unknown_evidence_rejected(self):
-        recommendation = FakeLLM([]).generate([], {"properties": {}})
-        with self.assertRaises(ValueError):
-            validate_recommendation(recommendation, {"revenue_metrics.revenue_yoy_growth_pct"})
+    def test_unknown_citation_text_is_preserved_without_rejection(self):
+        recommendation = FakeLLM().generate([], {})
+        recommendation["actions"][0]["evidence_metric_ids"] = ["unknown.metric"]
+        validate_recommendation(recommendation, set())
+        self.assertEqual(recommendation["actions"][0]["evidence_metric_ids"], ["unknown.metric"])
 
-    def test_invented_risk_label_or_numeric_prose_rejected(self):
-        for summary in ("The business has moderate financial stress.", "Credit usage is 80%."):
-            recommendation = FakeLLM([]).generate([], {"properties": {}})
-            recommendation["summary"] = summary
-            with self.subTest(summary=summary), self.assertRaises(ValueError):
-                validate_recommendation(recommendation, {"liquidity_metrics.overdue_ratio_pct"})
+    def test_only_unsupported_numbers_not_financial_wording_are_rejected(self):
+        recommendation = FakeLLM().generate([], {})
+        recommendation["summary"] = "The business has moderate financial stress."
+        validate_recommendation(recommendation, set())
+        recommendation["summary"] = "Credit usage is 80%."
+        with self.assertRaises(ValueError):
+            validate_recommendation(recommendation, set())
 
 
 
@@ -225,7 +224,7 @@ class AgentTests(unittest.TestCase):
         result["actions"][0]["suggested_action"] = "Review in 30 days."
         with self.assertRaises(ValueError) as error:
             validate_recommendation(result, {"liquidity_metrics.overdue_ratio_pct"})
-        for text in ("summary", "2026", "14.7", "actions[0].interpretation", "82.9",
+        for text in ("summary", "14.7", "actions[0].interpretation", "82.9",
                      "17.1", "actions[0].suggested_action", "30"):
             self.assertIn(text, str(error.exception))
 
@@ -242,14 +241,14 @@ class AgentTests(unittest.TestCase):
         result = RecommendationAgent(MetricTools(dataset(), date(2026,9,1)), llm).run()
         self.assertEqual(len(llm.calls), 2)
         feedback = llm.calls[1][-1]["content"]
-        for text in ("actions[0].interpretation", "2.4224", "2026", "respective growth metrics"):
+        for text in ("actions[0].interpretation", "2.4224", "exactly equal"):
             self.assertIn(text, feedback)
         self.assertEqual(result["recommendation"]["actions"], good["actions"])
         self.assertIn("formula", result["evidence"]["revenue_metrics"]["revenue_yoy_growth_pct"])
 
     def test_unsupported_unicode_numbers_are_rejected_in_all_prose_fields(self):
         examples = ("Growth is ３.０％.", "Growth is ٣.٠٪.", "Growth is ۳.۰٪.",
-                    "Review in ① month.", "Review in Ⅳ months.")
+                    "Review in Ⅳ months.", "Review in ½ months.")
         for text in examples:
             for field in ("summary", "title", "interpretation", "suggested_action"):
                 result = FakeLLM().generate([], {})
@@ -260,16 +259,13 @@ class AgentTests(unittest.TestCase):
                     validate_recommendation(result, {"liquidity_metrics.overdue_ratio_pct"})
                 self.assertEqual(result, original)
 
-    def test_reported_shorthand_citations_and_fullwidth_prose_reported_together(self):
+    def test_shorthand_citations_do_not_restrict_available_value_matching(self):
         result = FakeLLM().generate([], {})
-        result["summary"] = "Revenue grew ３.０％ and annual revenue declined １４.７％."
-        result["actions"][0]["evidence_metric_ids"] = ["revenue_mom_growth_pct", "revenue_yoy_growth_pct"]
-        available = {"revenue_metrics.revenue_mom_growth_pct", "revenue_metrics.revenue_yoy_growth_pct"}
-        with self.assertRaises(ValueError) as error:
-            validate_recommendation(result, available)
-        for part in ("actions[0].evidence_metric_ids", "revenue_metrics.revenue_mom_growth_pct",
-                     "revenue_metrics.revenue_yoy_growth_pct", "summary", "3.0", "14.7"):
-            self.assertIn(part, str(error.exception))
+        result["summary"] = "Revenue grew ３.０％ and annual growth was -１４.７％."
+        result["actions"][0]["evidence_metric_ids"] = ["revenue_mom_growth_pct"]
+        values = {"revenue_metrics.revenue_mom_growth_pct": 3,
+                  "revenue_metrics.revenue_yoy_growth_pct": -14.7}
+        validate_recommendation(result, set(values), values)
 
 
 

@@ -304,3 +304,53 @@ unrounded ratios. RISCOR and repair instructions request exactly two decimal
 places in numeric prose. JSON evidence remains numeric (45.0 and 45.00 have the
 same numeric value); trailing-zero presentation is requested in generated text.
 The existing supported-value, unit, sign and citation validation remains active.
+
+
+## Current value-only validation policy — 21 October 2026
+
+This supersedes earlier citation-scoped, unit-aware and semantic validation rules.
+Generated prose numbers are normalized and compared for exact numeric equality
+with any available calculated metric from all tools. 45, 45.0 and 45.00 are equal;
+18.4 is not equal to 18.41, and 14.7 is not equal to -14.7. No additional rounding,
+unit, deadline, risk-label or citation-correctness checks are applied. JSON shape,
+field types and the existing six-action limit remain required for API compatibility.
+Citation arrays may be empty; they remain part of the response but do not determine
+which metric values are eligible. The structured-output schema no longer restricts
+citation strings to an enum. Unicode normalization, all evidence, calculations,
+output budget, and one validation-repair attempt are preserved. Numbers in dates,
+quarter labels or reference boundaries have no special exemption: if they do not
+match tool values, they can still fail the value comparison. Wrong financial
+meaning or units can now pass when the numeric value matches a tool value.
+
+
+## Current sign-independent validation — 21 October 2026
+
+Numeric matching now compares exact absolute magnitudes across available tool
+metrics. Signs are ignored for every metric and prose field, without interpreting
+growth/decline wording. A tool value of -14.43 matches 14.43, +14.43 or -14.43;
+14.4 and 14.44 still fail. Decimal placement remains significant: 87 does not
+match 0.87. Original signed tool evidence is preserved. Units/citations and
+financial meaning remain outside the numeric check; basic JSON shape checks
+remain. The main and repair prompts allow direction to be expressed in words
+while requiring exact magnitudes. This supersedes earlier sign-matching policy.
+
+
+## Leading-zero decimal parsing — 21 October 2026
+
+The numeric parser accepts .87 as the decimal value 0.87, including signed and
+Unicode-normalized forms. It does not scale integers: 87 still does not match
+0.87. Exact magnitude matching, sign independence and original tool evidence are
+unchanged. RISCOR and repair instructions explicitly request retaining the leading
+zero in generated decimals. Parsing tolerance does not rewrite the returned prose.
+
+
+## Reporting years and month/year durations — 21 October 2026
+
+The numeric validator exempts recognizable calendar years 1900–2199, ISO reporting
+dates, numeric month/year dates and integer month/year durations from financial
+value matching. September 2026, 2026-09 and the last 12 months can be included
+without matching numeric financial evidence. Figures with financial suffixes,
+such as 2026%, remain checked. Date/window factual accuracy is left to the LLM
+and supplied context; this is recognition, not metadata verification. The prompt
+and repair instructions now permit these references. Exact financial magnitude
+matching, ignored signs, response structure and full tool evidence remain unchanged.
