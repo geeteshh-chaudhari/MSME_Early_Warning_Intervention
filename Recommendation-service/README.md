@@ -294,3 +294,13 @@ All 59 regression tests pass. Response field structure, full evidence, six-actio
 limit, 1800-token output budget, compact model input and single-repair limit are
 unchanged. Existing debug response printing now shows normalized prose. No live
 model generation was run for this update. Restart the API to load the new policy.
+
+
+### Metric precision (21 October 2026)
+Calculated tool metric values are rounded once to two decimal places using Decimal
+half-up rounding before they are sent to the LLM and returned as evidence. Raw
+snapshot inputs retain their precision; the receivables/revenue growth gap uses
+unrounded ratios. RISCOR and repair instructions request exactly two decimal
+places in numeric prose. JSON evidence remains numeric (45.0 and 45.00 have the
+same numeric value); trailing-zero presentation is requested in generated text.
+The existing supported-value, unit, sign and citation validation remains active.

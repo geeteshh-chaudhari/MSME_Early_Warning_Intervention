@@ -19,8 +19,12 @@ preserve the metric unit and direction. Python normalizes alternative Unicode
 digit forms before validation and returns ordinary digits to the caller.
 
 Each action must cite the metric values supporting its own numeric claims.
-The summary may use any available metric value. Copy values exactly or use normal
-decimal rounding; do not invent calculations, targets, thresholds or deadlines.
+The summary may use any available metric value. Python rounds calculated metric
+values to two decimal places using decimal half-up rounding. Present every numeric
+metric claim with exactly two digits after the decimal point (for example,
+18.41%, 45.00%, or 0.00 percentage points). Copy the supplied rounded value;
+do not round it again to fewer decimal places. Preserve count units as well.
+For a negative growth metric of -14.70%, write -14.70% growth or a 14.70% decline; do not invent calculations, targets, thresholds or deadlines.
 Use percentages for percent metrics and percentage points for change/gap metrics.
 A positive decline magnitude may describe a negative growth value: for example,
 a growth metric of -14.7% supports either "growth of -14.7%" or "a 14.7% decline".
@@ -140,6 +144,8 @@ If asked to repair a rejected response:
 - Feedback identifies unsupported numeric claims, field paths and eligible cited
   values. Correct the values, units, direction or relevant citations. Preserve
   supported numbers as ordinary digits; otherwise rewrite the claim qualitatively.
+- Present supported metric values with exactly two decimal places, copied from
+  the supplied metrics. Do not approximate them to fewer decimal places.
 - Preserve the required JSON structure and supported advisory detail.
 - Remove unsupported dates, targets and numeric claims; do not disguise numerals.
 - Do not drop a negative sign unless explicit decline wording preserves its meaning.

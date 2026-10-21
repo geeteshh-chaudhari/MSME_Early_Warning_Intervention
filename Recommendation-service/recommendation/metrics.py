@@ -1,6 +1,6 @@
 """Deterministic metrics. LLMs never calculate financial values."""
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 
 def shift_month(value, offset):
@@ -30,7 +30,7 @@ def number(value):
 
 
 def metric(value=None, unit="percent", reason=None, **details):
-    return {"value": float(round(value, 4)) if value is not None else None,
+    return {"value": float(number(value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)) if value is not None else None,
             "unit": unit, "status": "unavailable" if value is None else "available",
             "reason": reason, **details}
 
@@ -159,8 +159,11 @@ class MetricTools:
         utilisation = current["credit_used"] / self.limit * 100
         yoy = self.snapshots.get(shift_month(self.as_of, -12))
         rec_growth = growth(current["total_receivables"], yoy["total_receivables"]) if yoy else metric(reason="Same month last year missing.")
-        revenue_growth = growth(current["revenue"], yoy["revenue"]) if yoy else metric(reason="Same month last year missing.")
-        rec_value, rev_value = rec_growth["value"], revenue_growth["value"]
+        # Compute the gap from unrounded ratios; round only the final metric.
+        rec_value = ((current["total_receivables"] / yoy["total_receivables"] - 1) * 100
+                     if yoy and yoy["total_receivables"] > 0 else None)
+        rev_value = ((current["revenue"] / yoy["revenue"] - 1) * 100
+                     if yoy and yoy["revenue"] > 0 else None)
         return {
             "overdue_ratio_pct": metric(ratio, reason="Zero total receivables." if ratio is None else None,
                 formula="overdue_receivables / total_receivables * 100"),
