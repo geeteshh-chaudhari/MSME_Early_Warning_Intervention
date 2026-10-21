@@ -22,7 +22,6 @@ export default function FinancialAnalytics({ business, user }) {
   const latest = series.at(-1)?.snapshot;
   const evidence = report?.evidence || {};
   const saved = report?.context?.assessment;
-  const notes = [...new Set([...(report?.context?.limitations || []), ...(report?.notes || [])])];
   const currentMetric = (group, key) => evidence[group]?.[key];
   const monthlyRows = [...windowRows].reverse();
   const page = Math.min(historyPage, Math.max(0, Math.ceil(monthlyRows.length / 5) - 1));
@@ -60,7 +59,6 @@ export default function FinancialAnalytics({ business, user }) {
       <section className="panel"><div className="panel-heading"><div><h2>Saved assessment context</h2><p>Historical classification for this reporting month; analytics does not create a new risk score.</p></div>{saved && <WorkflowStatus value={saved.severity} />}</div><div className="workflow-inset">{saved ? <p className="management-help">Assessment #{saved.assessment_id} · Threshold #{saved.threshold_config_id} · Revenue decline {amountLabel(saved.revenue_decline_pct)}% · Overdue {amountLabel(saved.overdue_receivable_pct)}% · Credit {amountLabel(saved.credit_utilisation_pct)}%</p> : <p className="management-help">No saved assessment is available for this reporting month. No default thresholds are assumed.</p>}</div></section>
       <EvidenceExplorer key={period.month} evidence={evidence} series={windowRows} />
       <section className="panel"><div className="panel-heading"><div><h2>Monthly observations</h2><p>Latest first · 5 per page · selected {windowSize}-month window</p></div></div><div className="table-scroll"><table><thead><tr><th>Month</th><th>Revenue</th><th>Total receivables</th><th>Overdue</th><th>Credit used</th><th>Availability</th></tr></thead><tbody>{monthlyRows.slice(page * 5, page * 5 + 5).map(row => <tr key={row.month}><td>{monthLabel(row.month)}</td><td>{amountLabel(row.snapshot?.revenue)}</td><td>{amountLabel(row.snapshot?.total_receivables)}</td><td>{amountLabel(row.snapshot?.overdue_receivables)}</td><td>{amountLabel(row.snapshot?.credit_used)}</td><td>{row.available ? "Available" : "Unavailable"}</td></tr>)}</tbody></table></div><WorkflowPagination page={page} onPage={setHistoryPage} loading={false} count={monthlyRows.length} hasNext={(page + 1) * 5 < monthlyRows.length} /></section>
-      <section className="panel"><div className="panel-heading"><div><h2>Data notes & limitations</h2><p>Interpret the metrics with their comparison periods and assumptions.</p></div></div><ul className="insights-notes">{notes.map(note => <li key={note}>{note}</li>)}</ul></section>
     </>}</ResourceState>}
   </div>;
 }
