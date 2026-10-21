@@ -9,6 +9,9 @@ import com.msme.entity.ActivityLog;
 @Repository
 public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long> {
 
+    boolean existsByRelatedEntityTypeAndRelatedEntityIdAndActionCode(
+            String relatedEntityType, Long relatedEntityId, String actionCode);
+
     Page<ActivityLog> findByRelatedEntityTypeAndRelatedEntityId(String relatedEntityType, Long relatedEntityId, Pageable page);
 
 }
