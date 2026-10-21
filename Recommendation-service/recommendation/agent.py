@@ -129,7 +129,7 @@ class RecommendationAgent:
                 messages.append({"role": "user", "content": (
                     "Repair the rejected JSON using this validation feedback: " + str(ex)
                     + " Preserve the required fields and supported advisory detail. "
-                    "Keep supported numeric claims as ordinary decimal digits. Correct unsupported values, "
+                    "Keep supported numeric claims as ordinary decimal digits with exactly two decimal places, copied from supplied metrics. Correct unsupported values, "
                     "units, direction or citations; otherwise rewrite that claim qualitatively. "
                     "A positive decline magnitude is allowed only for a negative cited growth metric. "
                     "Use exact available metric IDs supporting each action's claims. "

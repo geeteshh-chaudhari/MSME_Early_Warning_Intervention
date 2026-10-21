@@ -43,7 +43,7 @@ class MetricTests(unittest.TestCase):
         result = MetricTools(data, date(2026, 9, 1)).revenue_metrics()
         self.assertEqual(result["revenue_mom_growth_pct"]["value"], -50)
         self.assertEqual(result["revenue_yoy_growth_pct"]["value"], -50)
-        self.assertAlmostEqual(result["revenue_qoq_growth_pct"]["value"], -16.6667)
+        self.assertAlmostEqual(result["revenue_qoq_growth_pct"]["value"], -16.67)
 
     def test_tools_supply_zero_metric_meanings(self):
         tools = MetricTools(dataset(), date(2026, 9, 1))
