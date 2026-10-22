@@ -28,7 +28,7 @@ public class WorkflowAutomation {
                 event(id,"MSME",id,"MSME_REGISTERED","New MSME registered. Risk Admin: configure thresholds immediately.");
             for(var row:jdbc.queryForList("SELECT t.threshold_config_id,t.msme_id FROM threshold_config t WHERE NOT EXISTS (SELECT 1 FROM activity_log l WHERE l.related_entity_type='THRESHOLD_CONFIG' AND l.related_entity_id=t.threshold_config_id AND l.action_code='CONFIG_CREATED') FETCH FIRST 100 ROWS ONLY"))
                 event(number(row,"MSME_ID"),"THRESHOLD_CONFIG",number(row,"THRESHOLD_CONFIG_ID"),"CONFIG_CREATED","Risk Admin saved a threshold configuration version.");
-            for(var row:jdbc.queryForList("SELECT a.assessment_id,a.msme_id FROM risk_assessment a JOIN msme m ON m.msme_id=a.msme_id WHERE m.is_active='Y' AND NOT EXISTS (SELECT 1 FROM activity_log l WHERE l.related_entity_type='ASSESSMENT' AND l.related_entity_id=a.assessment_id AND l.action_code='ASSESSMENT_COMPLETED') ORDER BY a.assessment_id FETCH FIRST 100 ROWS ONLY")) {
+            for(var row:jdbc.queryForList("SELECT a.assessment_id,a.msme_id FROM risk_assessment a JOIN msme m ON m.msme_id=a.msme_id WHERE m.is_active='Y' AND NOT EXISTS (SELECT 1 FROM activity_log l WHERE l.related_entity_type='ASSESSMENT' AND l.related_entity_id=a.assessment_id AND l.action_code='ASSESSMENT_COMPLETED') ORDER BY a.assessment_id DESC FETCH FIRST 100 ROWS ONLY")) {
                 Long id=number(row,"ASSESSMENT_ID"),msme=number(row,"MSME_ID");
                 tx.executeWithoutResult(status->{
                     jdbc.queryForObject("SELECT assessment_id FROM risk_assessment WHERE assessment_id=? FOR UPDATE",Long.class,id);
@@ -45,7 +45,7 @@ public class WorkflowAutomation {
     @Scheduled(fixedDelay=5000,initialDelay=10000)
     public void initialRecommendations(){
         try {
-            var ids=jdbc.queryForList("SELECT w.warning_id FROM warning w WHERE w.warning_status NOT IN ('CLOSED','CLOSED_REVIEWED') AND NOT EXISTS (SELECT 1 FROM activity_log l WHERE l.related_entity_type='WARNING' AND l.related_entity_id=w.warning_id AND l.action_code IN ('RECOMMENDATION_GENERATED','RECOMMENDATION_UNAVAILABLE')) ORDER BY w.warning_id FETCH FIRST 1 ROW ONLY",Long.class);
+            var ids=jdbc.queryForList("SELECT w.warning_id FROM warning w WHERE w.warning_status NOT IN ('CLOSED','CLOSED_REVIEWED') AND NOT EXISTS (SELECT 1 FROM activity_log l WHERE l.related_entity_type='WARNING' AND l.related_entity_id=w.warning_id AND l.action_code IN ('RECOMMENDATION_GENERATED','RECOMMENDATION_UNAVAILABLE')) ORDER BY w.warning_id DESC FETCH FIRST 1 ROW ONLY",Long.class);
             for(var id:ids) recommendations.generate(id);
         }catch(Exception ex){org.slf4j.LoggerFactory.getLogger(getClass()).warn("Initial recommendation pending ({})",ex.getClass().getSimpleName());}
     }

@@ -55,10 +55,11 @@ class RecommendationWorkflowTest {
             "http://127.0.0.1:"+server.getAddress().getPort(),"t".repeat(40), manager);
     }
     @AfterEach void stop() { server.stop(0); }
-    @Test void successfulActionsAreCombinedEvidenceSavedAndNeverRegenerated() {
+    @Test void successfulActionsRetainJsonEvidenceAndAreNeverRegenerated() {
         workflow.generate(10L);
-        assertTrue(warning.getRecommendedAction().contains("1. Collections: Call overdue customers"));
-        assertTrue(warning.getRecommendedAction().contains("2. Credit: Review utilisation"));
+        assertTrue(warning.getRecommendedAction().startsWith("{"));
+        assertTrue(warning.getRecommendedAction().contains("\"suggested_action\":\"Call overdue customers\""));
+        assertTrue(warning.getRecommendedAction().contains("\"title\":\"Credit\""));
         verify(cases).systemAudit(eq(warning),eq("RECOMMENDATION_GENERATED"),anyString(),contains("saved assessment"));
         workflow.generate(10L);
         assertEquals(1,requests.get());
@@ -83,12 +84,13 @@ class RecommendationWorkflowTest {
         when(cases.writable(10L)).thenThrow(new com.msme.exception.DuplicateResourceException("Closed case"));
         assertThrows(com.msme.exception.DuplicateResourceException.class,()->workflow.explicitlyGenerate(10L));
     }
-    @Test void missingActionsAreFilledWithoutReplacingHistoricalInterventionText() {
+    @Test void modelGenerationNeverWritesInterventionActionTypes() {
         var missing=new Intervention();missing.setActionText(RecommendationWorkflow.UNAVAILABLE);
         var historical=new Intervention();historical.setActionText("Existing recorded action");
         when(interventions.findByWarningId(eq(10L),any())).thenReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(missing,historical)));
         workflow.generate(10L);
-        assertTrue(missing.getActionText().contains("Call overdue customers"));
+        assertEquals(RecommendationWorkflow.UNAVAILABLE, missing.getActionText());
+        verify(interventions, never()).save(any());
         assertEquals("Existing recorded action",historical.getActionText());
     }
 }

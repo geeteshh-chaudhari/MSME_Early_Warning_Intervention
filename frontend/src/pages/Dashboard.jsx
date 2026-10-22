@@ -1,3 +1,4 @@
+import { recommendationText } from "../components/workflowFormat";
 import FinancialSnapshotForm from "../components/FinancialSnapshotForm";
 import BusinessForm from "../components/BusinessForm";
 import RepresentativeManagement from "../components/RepresentativeManagement";
@@ -260,7 +261,7 @@ function WarningList({ warnings, error }) {
             {warning.recommendedAction && (
               <div className="recommended-action">
                 <ArrowRight size={15} />
-                {warning.recommendedAction}
+                {recommendationText(warning.recommendedAction)}
               </div>
             )}
 

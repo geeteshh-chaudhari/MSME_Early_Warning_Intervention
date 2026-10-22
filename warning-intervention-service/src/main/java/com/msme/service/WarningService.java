@@ -67,11 +67,7 @@ public class WarningService {
                     i.getIndicatorCode() + " = " + i.getCalculatedValue() + ", threshold = "
                     + i.getThresholdValueUsed() + ". "
                     + Objects.toString(i.getExplanationText(), "")).collect(Collectors.joining("; ")));
-        warning.setRecommendedAction(automatic ? RecommendationWorkflow.UNAVAILABLE : switch (warning.getPrimaryDriver()) {
-            case "REVENUE_DETERIORATION" -> "Review revenue decline and agree a cash-flow recovery plan.";
-            case "OVERDUE_RECEIVABLES" -> "Review overdue invoices and agree a collections plan.";
-            default -> "Review credit utilisation and agree a working-capital plan.";
-        });
+        warning.setRecommendedAction("{\"status\":\"pending\",\"actions\":[]}");
         warning.setCreatedAt(LocalDateTime.now());
         warnings.saveAndFlush(warning);
         if (automatic) {
@@ -102,36 +98,72 @@ public class WarningService {
         var warning = writable(id);
         String decision = request.getDecision();
         String prior = warning.getWarningStatus();
-        if (request.getReason() == null || request.getReason().isBlank()) {
-            throw new InvalidRequestException("Decision reason is required");
-        }
-        if ("CLOSE".equals(decision) && "RM".equals(access.currentUser().getRole())) {
-            requireState(warning, "INTERVENTION_ACTIVE");
-            warning.setWarningStatus("CLOSED");
-        } else if (Set.of("ACCEPT", "REJECT", "ESCALATE").contains(decision)) {
-            access.requireRole("RM");
-            requireState(warning, "OPEN", "UNDER_REVIEW", "INTERVENTION_ACTIVE");
-            if ("INTERVENTION_ACTIVE".equals(prior) && !"ESCALATE".equals(decision)) {
-                throw new DuplicateResourceException("An active intervention can only be escalated, closed or followed up");
-            }
-            warning.setWarningStatus(switch (decision) {
-                case "ACCEPT" -> "UNDER_REVIEW";
-                case "REJECT" -> "CLOSED_REVIEWED";
-                default -> "ESCALATED";
-            });
+        if ("RISK_ADMIN".equals(access.currentUser().getRole())) {
+            if (!Set.of("RETURN", "CONFIRM").contains(decision))
+                throw new ForbiddenOperationException("Risk Admin can only append advice for the RM");
+            appendAction(warning, null, request.getReason(), request.getFollowUpDate());
         } else {
-            access.requireRole("RISK_ADMIN");
-            requireState(warning, "ESCALATED");
-            warning.setWarningStatus(switch (decision) {
-                case "RETURN", "CONFIRM" -> interventions.findByWarningIdAndIsActive(id, "Y").isEmpty()
-                        ? "UNDER_REVIEW" : "INTERVENTION_ACTIVE";
-                case "CLOSE" -> "CLOSED";
-                default -> throw new InvalidRequestException("Unknown decision");
-            });
+            access.requireRole("RM");
+            if (!Set.of("INTERVENE", "ESCALATE", "CLOSE").contains(decision))
+                throw new InvalidRequestException("Choose INTERVENE, ESCALATE or CLOSE");
+            appendAction(warning, decision.toLowerCase(Locale.ROOT), request.getReason(), request.getFollowUpDate(), "CLOSE".equals(decision));
+            // Intervention closure alone never changes warning status.
+            if ("CLOSE".equals(decision)) {
+                warning.setWarningStatus("CLOSED");
+                warning.setClosedAt(LocalDateTime.now());
+            }
         }
-        if (isClosed(warning)) closeInterventions(warning);
         audit(warning, decision, request.getReason().trim(), prior, warning.getWarningStatus());
         return ResponseMapper.toResponse(warning);
+    }
+
+    /** Caller holds the warning row lock, serializing appends and initial creation. */
+    Intervention appendAction(Warning warning, String action, String note, java.time.LocalDate date) {
+        return appendAction(warning, action, note, date, false);
+    }
+
+    private Intervention appendAction(Warning warning, String action, String note, java.time.LocalDate date,
+            boolean explicitWarningClosure) {
+        if (note == null || note.isBlank() || note.length() > 4000)
+            throw new InvalidRequestException("Notes must contain between 1 and 4000 characters");
+        if (date == null || date.isBefore(java.time.LocalDate.now()))
+            throw new InvalidRequestException("Follow-up date must be today or later");
+        var records = interventions.findByWarningIdOrderByInterventionIdAsc(warning.getWarningId());
+        if (records.size() > 1)
+            throw new DuplicateResourceException("This legacy warning has multiple interventions; consolidate its history before appending");
+        var intervention = records.isEmpty() ? new Intervention() : records.getFirst();
+        var actor = access.currentUser();
+        boolean admin = "RISK_ADMIN".equals(actor.getRole());
+        if (admin) {
+            if (records.isEmpty() || !"escalate".equals(intervention.getActionText()))
+                throw new ForbiddenOperationException("Risk Admin notes are editable only after RM escalation");
+            if (action != null) throw new ForbiddenOperationException("Risk Admin can append advice only");
+        } else {
+            access.requireRole("RM");
+            if (action == null && !records.isEmpty()) action = intervention.getActionText();
+            if (action == null || !Set.of("intervene", "escalate", "close").contains(action))
+                throw new InvalidRequestException("Choose intervene, escalate or close");
+        }
+        if (!records.isEmpty() && !"Y".equals(intervention.getIsActive()) && !explicitWarningClosure)
+            throw new DuplicateResourceException("Intervention is closed; further actions are disabled");
+        if (records.isEmpty()) {
+            intervention.setWarningId(warning.getWarningId());
+            intervention.setCreatedByUserId(actor.getUserId());
+            intervention.setCreatedAt(LocalDateTime.now());
+            intervention.setIsActive("Y");
+        }
+        String entry = actor.getRole() + " #" + actor.getUserId() + " "
+                + (admin ? "advice" : action) + " | " + note.trim() + " | " + date;
+        String previous = intervention.getNotes();
+        intervention.setNotes(previous == null || previous.isBlank() ? entry : previous + "\n" + entry);
+        intervention.setFollowUpDate(date);
+        if (!admin) intervention.setActionText(action);
+        if ("close".equals(action)) {
+            intervention.setIsActive("N");
+            intervention.setClosedAt(LocalDateTime.now());
+            intervention.setClosedByUserId(actor.getUserId());
+        }
+        return interventions.saveAndFlush(intervention);
     }
 
     @Transactional(readOnly = true)
@@ -144,18 +176,7 @@ public class WarningService {
 
     @PreAuthorize("hasAnyRole('RM', 'RISK_ADMIN')")
     public ActivityLogResponse addNote(Long id, CreateWarningNoteRequest request) {
-        var warning = writable(id);
-        String notes = request.getNotes();
-        if (notes == null || notes.isBlank() || notes.length() > 4000) {
-            throw new InvalidRequestException("Notes must contain between 1 and 4000 characters");
-        }
-        String prefix = "RISK_ADMIN".equals(access.currentUser().getRole()) ? "Admin: " : "Rm: ";
-        String note = prefix + notes.trim();
-        String existingAction = warning.getRecommendedAction();
-        warning.setRecommendedAction(existingAction == null || existingAction.isBlank()
-                ? note : existingAction + ",\n" + note);
-        return ResponseMapper.toResponse(audit(warning, "NOTE_ADDED", note,
-                warning.getWarningStatus(), warning.getWarningStatus()));
+        throw new InvalidRequestException("Append notes to the intervention with a follow-up date; recommendations contain LLM JSON only");
     }
 
     Warning readable(Long id) {
@@ -188,10 +209,8 @@ public class WarningService {
     public boolean adminNotesAvailable(Long id) {
         var warning = readable(id);
         if (isClosed(warning)) return false;
-        if ("ESCALATED".equals(warning.getWarningStatus())) return true;
-        return activities.findFirstByRelatedEntityTypeAndRelatedEntityIdAndActionCodeInOrderByActivityIdDesc(
-                "WARNING", id, Set.of("ESCALATE", "FOLLOW_UP_ESCALATED", "CONFIRM", "RETURN"))
-                .map(activity -> "CONFIRM".equals(activity.getActionCode())).orElse(false);
+        return interventions.findByWarningIdOrderByInterventionIdAsc(id).stream()
+                .anyMatch(i -> "Y".equals(i.getIsActive()) && "escalate".equals(i.getActionText()));
     }
 
     void requireOwner(Warning warning) {
@@ -211,25 +230,9 @@ public class WarningService {
         activities.save(entry);
     }
 
-    static void requireState(Warning w, String... allowed) {
-        if (!Arrays.asList(allowed).contains(w.getWarningStatus())) {
-            throw new DuplicateResourceException("Action is not allowed in status " + w.getWarningStatus());
-        }
-    }
-
     static PageRequest page(int page, int size, String sort) {
         if (page < 0 || size < 1 || size > 100) throw new InvalidRequestException("Page must be >= 0 and size between 1 and 100");
         return PageRequest.of(page, size, Sort.by(sort).descending());
-    }
-
-    void closeInterventions(Warning warning) {
-        var now = LocalDateTime.now();
-        warning.setClosedAt(now);
-        for (var intervention : interventions.findByWarningIdAndIsActive(warning.getWarningId(), "Y")) {
-            intervention.setIsActive("N");
-            intervention.setClosedAt(now);
-            intervention.setClosedByUserId(access.currentUser().getUserId());
-        }
     }
 
     ActivityLog audit(Warning warning, String action, String reason, String prior, String next) {

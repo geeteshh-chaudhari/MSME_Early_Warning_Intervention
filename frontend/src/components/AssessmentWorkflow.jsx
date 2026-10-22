@@ -1,17 +1,12 @@
 import { useState } from "react";
-import { Activity, ArrowRight, Plus, X } from "lucide-react";
-import { assessmentHistoryPath, createWarning, runAssessment } from "../api/workflowApi";
+import { Activity, ArrowRight, X } from "lucide-react";
+import { assessmentHistoryPath, runAssessment } from "../api/workflowApi";
 import { useWorkflowAction, useWorkflowResource } from "../hooks/useWorkflowResource";
 import { amountLabel, dateLabel, humanize, listOf } from "./workflowFormat";
 import { IndicatorTable, ResourceState, WorkflowNotice, WorkflowPagination, WorkflowStatus } from "./WorkflowUi";
 
-function AssessmentDetails({ id, token, active, onWarningSaved, onClose }) {
+function AssessmentDetails({ id, token, onClose }) {
   const resource = useWorkflowResource(`/assessment/assessments/${id}`, token);
-  const action = useWorkflowAction();
-  async function raiseWarning() {
-    const result = await action.execute(() => createWarning(token, id), "Warning created. Open Warnings to review and decide the next action.");
-    if (result.ok) onWarningSaved(result.data);
-  }
   const detail = resource.data;
   return <section className="panel" aria-label="Assessment details">
     <div className="panel-heading"><div><h2>Assessment #{id}</h2><p>Saved evidence and applied thresholds</p></div><button className="icon-button" onClick={onClose} aria-label="Close assessment details"><X size={18} /></button></div>
@@ -19,10 +14,7 @@ function AssessmentDetails({ id, token, active, onWarningSaved, onClose }) {
       {detail && <>
         <div className="workflow-summary"><WorkflowStatus value={detail.severity} /><span>{dateLabel(detail.assessmentDate)}</span><span>Pattern: {humanize(detail.stressPattern)}</span><span>Threshold #{detail.thresholdConfigId}</span></div>
         <IndicatorTable indicators={detail.indicators} />
-        <div className="workflow-inset"><WorkflowNotice {...action} />
-          {detail.severity !== "HEALTHY" && <><p className="management-help">Create a warning from these saved breaches. The backend prevents duplicate warnings for the same assessment.</p>
-            <button className="button secondary" disabled={!active || action.busy || !!action.success || !detail.indicators?.some(i => i.breached)} onClick={raiseWarning}><Plus size={15} />Create warning</button></>}
-        </div>
+        <p className="workflow-inset management-help">Warnings are generated automatically from saved breached indicators. Open Warnings to review the result.</p>
       </>}
     </ResourceState>
   </section>;
@@ -43,7 +35,7 @@ function AssessmentComparison({ selection, token }) {
   </section>;
 }
 
-export default function AssessmentWorkflow({ business, user, snapshots, onAssessmentSaved, onWarningSaved }) {
+export default function AssessmentWorkflow({ business, user, snapshots, onAssessmentSaved }) {
   const [page, setPage] = useState(0);
   const [revision, setRevision] = useState(0);
   const [month, setMonth] = useState("");
@@ -57,9 +49,10 @@ export default function AssessmentWorkflow({ business, user, snapshots, onAssess
   const rows = listOf(resource.data);
   const months = [...new Set(snapshots.map(s => String(s.reportingPeriod).slice(0, 7)))].sort().reverse();
   const active = business.isActive === "Y";
+  const canRunAssessment = user.role === "RM";
   async function submit(event) {
     event.preventDefault();
-    if (!month || !active) return;
+    if (!month || !active || !canRunAssessment) return;
     const result = await action.execute(() => runAssessment(user.accessToken, business.msmeId, month), data => `Assessment #${data.assessmentId} is ready. If this month was already assessed, the existing result is returned.`);
     if (result.ok) {
       setPage(0); setRevision(v => v + 1); setDetailId(result.data.assessmentId);
@@ -80,7 +73,7 @@ export default function AssessmentWorkflow({ business, user, snapshots, onAssess
   }
 
   return <div className="workflow-stack">
-    <section className="panel"><div className="panel-heading"><div><h2>Run an assessment</h2><p>Use submitted financial data for {business.businessName}.</p></div><Activity size={21} className="teal" /></div>
+    {canRunAssessment && <section className="panel"><div className="panel-heading"><div><h2>Run an assessment</h2><p>Use submitted financial data for {business.businessName}.</p></div><Activity size={21} className="teal" /></div>
       <form className="workflow-inset" onSubmit={submit}><WorkflowNotice {...action} />
         <p className="snapshot-description">An approved effective threshold and the required three-month financial history must be available. Existing assessments are reused without recalculating saved results.</p>
         {!active && <p className="notice error">This business is inactive. New assessments are disabled.</p>}
@@ -90,8 +83,8 @@ export default function AssessmentWorkflow({ business, user, snapshots, onAssess
         </fieldset>
         {!months.length && <p className="management-help">No submitted financial months are loaded. Check Financial history before running an assessment.</p>}
       </form>
-    </section>
-    {detailId && <AssessmentDetails key={`${detailId}:${revision}`} id={detailId} token={user.accessToken} active={active} onWarningSaved={onWarningSaved} onClose={() => setDetailId(null)} />}
+    </section>}
+    {detailId && <AssessmentDetails key={`${detailId}:${revision}`} id={detailId} token={user.accessToken} onClose={() => setDetailId(null)} />}
     <section className="panel"><div className="panel-heading"><div><h2>Assessment history</h2><p>Open details or select records for comparison. Selections are kept when changing pages.</p></div><button className="button secondary" onClick={() => setRevision(v => v + 1)} disabled={resource.loading}>Reload history</button></div>
       <ResourceState resource={resource} empty={!rows.length}><div className="table-scroll"><table><thead><tr><th>Assessment</th><th>Date</th><th>Severity</th><th>Stress pattern</th><th>Actions</th></tr></thead><tbody>
         {rows.map(item => <tr key={item.assessmentId}><td>#{item.assessmentId}</td><td>{dateLabel(item.assessmentDate)}</td><td><WorkflowStatus value={item.severity} /></td><td>{humanize(item.stressPattern)}</td><td><div className="management-row-actions">

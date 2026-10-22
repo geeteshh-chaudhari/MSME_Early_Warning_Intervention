@@ -5,6 +5,8 @@ import java.math.BigDecimal;
 import jakarta.validation.constraints.*;
 
 public class UpdateInterventionRequest {
+    @Pattern(regexp = "intervene|escalate|close")
+    private String actionText;
     @NotBlank @Size(max = 4000)
     private String notes;
 
@@ -21,4 +23,6 @@ public class UpdateInterventionRequest {
     public void setNotes(String notes) { this.notes = notes; }
     public LocalDate getFollowUpDate() { return followUpDate; }
     public void setFollowUpDate(LocalDate followUpDate) { this.followUpDate = followUpDate; }
+    public String getActionText() { return actionText; }
+    public void setActionText(String actionText) { this.actionText = actionText; }
 }

@@ -43,7 +43,7 @@ class WarningAutomationSupportTest {
 
         var result = service.createAutomatic(7L);
 
-        assertEquals(RecommendationWorkflow.UNAVAILABLE, result.getRecommendedAction());
+        assertEquals("{\"status\":\"pending\",\"actions\":[]}", result.getRecommendedAction());
         assertTrue(result.getWhyNowText().contains("Current revenue is zero"));
         var audit = ArgumentCaptor.forClass(ActivityLog.class);
         verify(activities).save(audit.capture());

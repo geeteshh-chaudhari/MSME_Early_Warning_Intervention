@@ -5,10 +5,10 @@ import java.math.BigDecimal;
 import jakarta.validation.constraints.*;
 
 public class CreateInterventionRequest {
-    @NotBlank @Size(max = 4000)
+    @NotBlank @Pattern(regexp = "intervene|escalate|close")
     private String actionText;
 
-    @Size(max = 4000)
+    @NotBlank @Size(max = 4000)
     private String notes;
 
     @NotNull @FutureOrPresent

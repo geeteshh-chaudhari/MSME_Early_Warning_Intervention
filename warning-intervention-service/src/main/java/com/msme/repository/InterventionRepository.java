@@ -12,6 +12,7 @@ public interface InterventionRepository extends JpaRepository<Intervention, Long
     Optional<Long> findWarningId(@Param("id") Long id);
 
     List<Intervention> findByWarningIdAndIsActive(Long warningId, String isActive);
+    List<Intervention> findByWarningIdOrderByInterventionIdAsc(Long warningId);
     Page<Intervention> findByWarningId(Long warningId, Pageable page);
 
 }
