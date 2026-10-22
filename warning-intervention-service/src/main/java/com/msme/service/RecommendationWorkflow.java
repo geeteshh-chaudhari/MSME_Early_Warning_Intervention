@@ -43,7 +43,7 @@ public class RecommendationWorkflow {
     }
     public Map<String,Object> state(Long id) {
         var w=cases.readable(id);
-        return Map.of("generated",generated(id),"actionText",Objects.toString(w.getRecommendedAction(),UNAVAILABLE),"escalated",cases.isEscalated(id));
+        return Map.of("generated",generated(id),"actionText",Objects.toString(w.getRecommendedAction(),UNAVAILABLE),"escalated",cases.isEscalated(id),"adminNotesAvailable",cases.adminNotesAvailable(id));
     }
     public WarningResponse explicitlyGenerate(Long id) { return generate(id,true); }
     public WarningResponse generate(Long id) { return generate(id,false); }

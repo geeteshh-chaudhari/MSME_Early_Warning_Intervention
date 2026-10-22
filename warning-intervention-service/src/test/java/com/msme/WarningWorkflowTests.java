@@ -310,6 +310,163 @@ class WarningWorkflowTests {
                 .andExpect(status().isServiceUnavailable()).andExpect(jsonPath("$.message").value("Database operation unavailable"));
     }
 
+    @Test void rmAndAdminNotesPersistInRecommendedActionAndHistoryWithoutChangingStatus() {
+        long id = create().getWarningId();
+        String originalAction = warnings.getWarning(id).getRecommendedAction();
+        var rmNote = warnings.addNote(id, new CreateWarningNoteRequest("  Contacted the customer.  "));
+        assertEquals("Rm: Contacted the customer.", rmNote.getDescription());
+        assertEquals("NOTE_ADDED", rmNote.getActionCode());
+        assertEquals(1L, rmNote.getActorUserId());
+        assertNotNull(rmNote.getCreatedAt());
+        assertNotNull(rmNote.getActivityId());
+        jdbc.update("insert into app_user(user_id,name,email,password_hash,role,account_status,created_at,updated_at) values(7,'Admin','admin@test','hash','RISK_ADMIN','ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)");
+        login("RISK_ADMIN", 7L, null);
+        var adminNote = warnings.addNote(id, new CreateWarningNoteRequest("Review collections next week."));
+        assertEquals(7L, adminNote.getActorUserId());
+        var history = warnings.getHistory(id, 0, 10).getContent();
+        assertEquals(adminNote.getActivityId(), history.getFirst().getActivityId());
+        assertEquals("Admin: Review collections next week.", history.getFirst().getDescription());
+        assertEquals("Rm: Contacted the customer.", history.get(1).getDescription());
+        assertEquals("OPEN", warnings.getWarning(id).getWarningStatus());
+        String expectedAction = originalAction + ",\nRm: Contacted the customer.,\nAdmin: Review collections next week.";
+        assertEquals(expectedAction, warnings.getWarning(id).getRecommendedAction());
+        assertEquals(expectedAction, jdbc.queryForObject("select recommended_action from warning where warning_id=?", String.class, id));
+        assertEquals(3L, count("activity_log"));
+    }
+
+    @Test void notesRespectCaseAccessAndLifecycle() {
+        long id = create().getWarningId();
+        login("RM", 2L, null);
+        assertThrows(ForbiddenOperationException.class, () -> warnings.addNote(id, new CreateWarningNoteRequest("Other RM")));
+        login("MSME_REP", 3L, 1L);
+        assertThrows(AccessDeniedException.class, () -> warnings.addNote(id, new CreateWarningNoteRequest("Representative")));
+        login("RM", 1L, null);
+        assertThrows(ResourceNotFoundException.class, () -> warnings.addNote(999L, new CreateWarningNoteRequest("Missing")));
+        jdbc.update("update msme set is_active='N' where msme_id=1");
+        assertThrows(InvalidRequestException.class, () -> warnings.addNote(id, new CreateWarningNoteRequest("Inactive")));
+        jdbc.update("update msme set is_active='Y' where msme_id=1");
+        warnings.decide(id, new DecisionRequest("REJECT", "Reviewed"));
+        assertThrows(DuplicateResourceException.class, () -> warnings.addNote(id, new CreateWarningNoteRequest("Closed")));
+        assertEquals(2L, count("activity_log"));
+    }
+
+    @Test void notesEndpointValidatesAndReturnsPersistedActivity() throws Exception {
+        long id = create().getWarningId();
+        var principal = (CustomUserPrincipal) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String token = jwt.generateToken(principal);
+        org.springframework.security.test.context.TestSecurityContextHolder.clearContext();
+        var mvc = MockMvcBuilders.webAppContextSetup(webContext).apply(springSecurity()).build();
+        String endpoint = "/api/warnings/" + id + "/notes";
+        mvc.perform(post(endpoint).contentType("application/json").content("{}"))
+                .andExpect(status().isUnauthorized());
+        for (String body : new String[]{"{}", "{\"notes\":\"   \"}", "{\"notes\":\"" + "a".repeat(4001) + "\"}"}) {
+            mvc.perform(post(endpoint).header("Authorization", "Bearer " + token).contentType("application/json").content(body))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.validationErrors.notes").exists());
+        }
+        mvc.perform(post(endpoint).header("Authorization", "Bearer " + token)
+                .contentType("application/json").content("{\"notes\":\"  Called customer.  \"}"))
+                .andExpect(status().isCreated()).andExpect(header().exists("Location"))
+                .andExpect(jsonPath("$.actionCode").value("NOTE_ADDED"))
+                .andExpect(jsonPath("$.description").value("Rm: Called customer."))
+                .andExpect(jsonPath("$.actorUserId").value(1))
+                .andExpect(jsonPath("$.activityId").isNumber())
+                .andExpect(jsonPath("$.createdAt").exists());
+        mvc.perform(get("/api/warnings/" + id + "/history").header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.content[0].description").value("Rm: Called customer."));
+        assertEquals(2L, count("activity_log"));
+    }
+
+    @Test void noteFillsEmptyRecommendedActionAndAuditFailureRollsBackIt() {
+        long id = create().getWarningId();
+        jdbc.update("update warning set recommended_action=null where warning_id=?", id);
+        warnings.addNote(id, new CreateWarningNoteRequest("  Call customer.  "));
+        assertEquals("Rm: Call customer.", warnings.getWarning(id).getRecommendedAction());
+        doThrow(new org.springframework.dao.DataAccessResourceFailureException("test failure")).when(activities).save(any(ActivityLog.class));
+        assertThrows(org.springframework.dao.DataAccessException.class,
+                () -> warnings.addNote(id, new CreateWarningNoteRequest("Must roll back.")));
+        assertEquals("Rm: Call customer.", warnings.getWarning(id).getRecommendedAction());
+        assertEquals(2L, count("activity_log"));
+    }
+
+    @Test void rmCanCloseActiveInterventionThroughDecisionEndpoint() throws Exception {
+        long id = create().getWarningId();
+        warnings.decide(id, new DecisionRequest("ACCEPT", "Proceed"));
+        long intervention = start(id);
+        var principal = (CustomUserPrincipal) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String token = jwt.generateToken(principal);
+        org.springframework.security.test.context.TestSecurityContextHolder.clearContext();
+        var mvc = MockMvcBuilders.webAppContextSetup(webContext).apply(springSecurity()).build();
+        mvc.perform(post("/api/warnings/" + id + "/decisions").header("Authorization", "Bearer " + token)
+                .contentType("application/json").content("{\"decision\":\"CLOSE\",\"reason\":\"Recovery plan completed\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.warningStatus").value("CLOSED"))
+                .andExpect(jsonPath("$.closedAt").exists());
+        assertEquals("N", jdbc.queryForObject("select is_active from intervention where intervention_id=?", String.class, intervention));
+        assertEquals(1L, jdbc.queryForObject("select closed_by_user_id from intervention where intervention_id=?", Long.class, intervention));
+        assertNotNull(jdbc.queryForObject("select closed_at from intervention where intervention_id=?", Timestamp.class, intervention));
+        login("RM", 1L, null);
+        var activity = warnings.getHistory(id, 0, 10).getContent().getFirst();
+        assertEquals("CLOSE", activity.getActionCode());
+        assertEquals("Recovery plan completed", activity.getDescription());
+        assertEquals(1L, activity.getActorUserId());
+        assertThrows(DuplicateResourceException.class, () -> warnings.decide(id, new DecisionRequest("CLOSE", "Repeat")));
+    }
+
+    @Test void rmClosureRequiresAssignedActiveCaseAndReasonAndRollsBackOnAuditFailure() {
+        long id = create().getWarningId();
+        assertThrows(DuplicateResourceException.class, () -> warnings.decide(id, new DecisionRequest("CLOSE", "Open case")));
+        warnings.decide(id, new DecisionRequest("ACCEPT", "Proceed"));
+        assertThrows(DuplicateResourceException.class, () -> warnings.decide(id, new DecisionRequest("CLOSE", "No intervention")));
+        long intervention = start(id);
+        login("RM", 2L, null);
+        assertThrows(ForbiddenOperationException.class, () -> warnings.decide(id, new DecisionRequest("CLOSE", "Other RM")));
+        login("MSME_REP", 3L, 1L);
+        assertThrows(AccessDeniedException.class, () -> warnings.decide(id, new DecisionRequest("CLOSE", "Representative")));
+        login("RM", 1L, null);
+        assertThrows(InvalidRequestException.class, () -> warnings.decide(id, new DecisionRequest("CLOSE", " ")));
+        jdbc.update("update msme set is_active='N' where msme_id=1");
+        assertThrows(InvalidRequestException.class, () -> warnings.decide(id, new DecisionRequest("CLOSE", "Inactive")));
+        jdbc.update("update msme set is_active='Y' where msme_id=1");
+        doThrow(new org.springframework.dao.DataAccessResourceFailureException("test failure")).when(activities).save(any(ActivityLog.class));
+        assertThrows(org.springframework.dao.DataAccessException.class, () -> warnings.decide(id, new DecisionRequest("CLOSE", "Completed")));
+        assertEquals("INTERVENTION_ACTIVE", warnings.getWarning(id).getWarningStatus());
+        assertEquals("Y", jdbc.queryForObject("select is_active from intervention where intervention_id=?", String.class, intervention));
+        assertNull(jdbc.queryForObject("select closed_at from intervention where intervention_id=?", Timestamp.class, intervention));
+        reset(activities);
+        warnings.decide(id, new DecisionRequest("ESCALATE", "Admin review"));
+        assertThrows(DuplicateResourceException.class, () -> warnings.decide(id, new DecisionRequest("CLOSE", "Escalated")));
+    }
+
+    @Test void adminNotesRemainAfterConfirmationButDisappearAfterReturnAndClosure() {
+        long id = create().getWarningId();
+        assertFalse(warnings.adminNotesAvailable(id));
+        warnings.decide(id, new DecisionRequest("ACCEPT", "Proceed"));
+        start(id);
+        warnings.decide(id, new DecisionRequest("ESCALATE", "Admin review"));
+        assertTrue(warnings.adminNotesAvailable(id));
+        jdbc.update("insert into app_user(user_id,name,email,password_hash,role,account_status,created_at,updated_at) values(7,'Admin','admin@test','hash','RISK_ADMIN','ACTIVE',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)");
+        login("RISK_ADMIN", 7L, null);
+        warnings.decide(id, new DecisionRequest("CONFIRM", "Escalation confirmed"));
+        assertTrue(warnings.adminNotesAvailable(id));
+        warnings.addNote(id, new CreateWarningNoteRequest("Continue the plan"));
+        assertTrue(warnings.adminNotesAvailable(id));
+        login("RM", 1L, null);
+        warnings.decide(id, new DecisionRequest("ESCALATE", "Further review"));
+        login("RISK_ADMIN", 7L, null);
+        warnings.decide(id, new DecisionRequest("RETURN", "Return to RM"));
+        assertFalse(warnings.adminNotesAvailable(id));
+        login("RM", 1L, null);
+        warnings.addNote(id, new CreateWarningNoteRequest("RM follow-up"));
+        assertFalse(warnings.adminNotesAvailable(id));
+        warnings.decide(id, new DecisionRequest("ESCALATE", "Review again"));
+        assertTrue(warnings.adminNotesAvailable(id));
+        login("RISK_ADMIN", 7L, null);
+        warnings.decide(id, new DecisionRequest("CONFIRM", "Confirmed again"));
+        assertTrue(warnings.adminNotesAvailable(id));
+        login("RM", 1L, null);
+        warnings.decide(id, new DecisionRequest("CLOSE", "Completed"));
+        assertFalse(warnings.adminNotesAvailable(id));
+    }
+
     private WarningResponse create() { return warnings.createWarning(new CreateWarningRequest(1L)); }
     private long start(long warning) {
         var result = interventions.createIntervention(warning, new CreateInterventionRequest("Collections plan", "Call customer", LocalDate.now().plusDays(7)));

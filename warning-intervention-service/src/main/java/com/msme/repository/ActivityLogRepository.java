@@ -12,6 +12,9 @@ public interface ActivityLogRepository extends JpaRepository<ActivityLog, Long> 
     boolean existsByRelatedEntityTypeAndRelatedEntityIdAndActionCode(
             String relatedEntityType, Long relatedEntityId, String actionCode);
 
+    Optional<ActivityLog> findFirstByRelatedEntityTypeAndRelatedEntityIdAndActionCodeInOrderByActivityIdDesc(
+            String relatedEntityType, Long relatedEntityId, Collection<String> actionCodes);
+
     Page<ActivityLog> findByRelatedEntityTypeAndRelatedEntityId(String relatedEntityType, Long relatedEntityId, Pageable page);
 
 }
