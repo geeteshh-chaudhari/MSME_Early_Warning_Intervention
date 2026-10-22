@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CircleAlert, X } from "lucide-react";
 import InterventionWorkflow from "./InterventionWorkflow";
 import { apiRequest } from "../api/client";
-import { decideWarning, warningHistoryPath, warningsPath } from "../api/workflowApi";
+import { addWarningNote, decideWarning, warningHistoryPath, warningsPath } from "../api/workflowApi";
 import { useWorkflowAction, useWorkflowResource } from "../hooks/useWorkflowResource";
 import { dateLabel, humanize, listOf } from "./workflowFormat";
 import { ResourceState, WorkflowNotice, WorkflowPagination, WorkflowStatus } from "./WorkflowUi";
@@ -18,8 +18,8 @@ const descriptions = {
 };
 function permittedDecisions(role, status, active) {
   if (!active) return [];
-  if (role === "RM") return ["OPEN", "UNDER_REVIEW"].includes(status) ? ["ACCEPT", "REJECT", "ESCALATE"] : status === "INTERVENTION_ACTIVE" ? ["ESCALATE"] : [];
-  return role === "RISK_ADMIN" && status === "ESCALATED" ? ["RETURN", "CONFIRM", "CLOSE"] : [];
+  if (role === "RM") return ["OPEN", "UNDER_REVIEW"].includes(status) ? ["ACCEPT", "REJECT", "ESCALATE"] : status === "INTERVENTION_ACTIVE" ? ["ESCALATE", "CLOSE"] : [];
+  return role === "RISK_ADMIN" && status === "ESCALATED" ? ["RETURN", "CONFIRM"] : [];
 }
 
 function DecisionForm({ warning, choices, token, onSaved }) {
@@ -40,23 +40,50 @@ function DecisionForm({ warning, choices, token, onSaved }) {
   }
   return <div className="workflow-inset workflow-decision"><h3>Record a decision</h3><WorkflowNotice {...action} error={validationError || action.error} />
     {reviewing ? <div className="snapshot-review"><h3>{humanize(decision)} warning #{warning.warningId}?</h3><p className="management-help">{descriptions[decision]}</p><p className="workflow-reason">{reason}</p><div className="snapshot-actions"><button className="button secondary" disabled={action.busy} onClick={() => setReviewing(false)}>Back to edit</button><button className="button primary" disabled={action.busy} onClick={save}>{action.busy ? "Saving…" : "Confirm decision"}</button></div></div>
-      : <form onSubmit={review}><fieldset className="snapshot-fieldset" disabled={action.busy}><div className="snapshot-fields"><div className="snapshot-field"><label htmlFor="warning-decision">Decision</label><select id="warning-decision" value={decision} onChange={e => setDecision(e.target.value)}>{choices.map(c => <option key={c} value={c}>{humanize(c)}</option>)}</select><small className="management-help">{descriptions[decision]}</small></div><div className="snapshot-field"><label htmlFor="warning-reason">Decision reason</label><textarea id="warning-reason" value={reason} onChange={e => setReason(e.target.value)} maxLength={4000} required /></div></div><div className="snapshot-actions"><button className="button primary" type="submit">Review decision</button></div></fieldset></form>}
+      : <form onSubmit={review}><fieldset className="snapshot-fieldset" disabled={action.busy}><div className="snapshot-fields"><div className="snapshot-field"><label htmlFor="warning-decision">Decision</label><select id="warning-decision" value={decision} onChange={e => setDecision(e.target.value)}>{choices.map(c => <option key={c} value={c}>{c === "CLOSE" && warning.warningStatus === "INTERVENTION_ACTIVE" ? "Close intervention" : humanize(c)}</option>)}</select><small className="management-help">{descriptions[decision]}</small></div><div className="snapshot-field"><label htmlFor="warning-reason">Decision reason</label><textarea id="warning-reason" value={reason} onChange={e => setReason(e.target.value)} maxLength={4000} required /></div></div><div className="snapshot-actions"><button className="button primary" type="submit">Review decision</button></div></fieldset></form>}
   </div>;
 }
 
-function WarningCase({ id, user, business, onChanged, onClose }) {
+function WarningNoteForm({ warningId, token, disabled, onSaved }) {
+  const [notes, setNotes] = useState("");
+  const [validationError, setValidationError] = useState("");
+  const action = useWorkflowAction();
+  async function save(event) {
+    event.preventDefault();
+    if (disabled || action.busy) return;
+    if (!notes.trim()) { setValidationError("Enter a note before saving."); return; }
+    setValidationError("");
+    const result = await action.execute(() => addWarningNote(token, warningId, notes.trim()), "Note saved to activity history.");
+    if (result.ok) { setNotes(""); onSaved(); }
+  }
+  return <div className="workflow-inset">
+    <h3>RM / Admin notes</h3>
+    <p className="management-help">Add a note to the recommended action. Each saved note is also kept in activity history with your user ID and the date and time.</p>
+    <WorkflowNotice {...action} error={validationError || action.error} />
+    <form onSubmit={save}><fieldset className="snapshot-fieldset" disabled={disabled || action.busy}>
+      <div className="snapshot-field"><label htmlFor={`warning-notes-${warningId}`}>Case notes</label><textarea id={`warning-notes-${warningId}`} value={notes} onChange={event => { setNotes(event.target.value); setValidationError(""); }} maxLength={4000} required /></div>
+      <div className="snapshot-actions"><button className="button primary" type="submit" disabled={!notes.trim()}>{action.busy ? "Saving…" : "Save note"}</button></div>
+    </fieldset></form>
+    {disabled && <p className="management-help">Notes can be added to open cases for active businesses. Saved notes remain available in activity history.</p>}
+  </div>;
+}
+
+function WarningCase({ id, user, business, refreshVersion, onChanged, onClose }) {
   const [revision, setRevision] = useState(0);
   const [caseRevision, setCaseRevision] = useState(0);
-  const [warningOverride, setWarningOverride] = useState(null);
   const [historyPage, setHistoryPage] = useState(0);
   const [message, setMessage] = useState("");
-  const resource = useWorkflowResource(`/warnings/${id}`, user.accessToken, caseRevision);
-  const history = useWorkflowResource(user.role !== "MSME_REP" ? warningHistoryPath(id, historyPage) : null, user.accessToken, revision);
-  const warning = warningOverride || resource.data;
+  const resource = useWorkflowResource(`/warnings/${id}`, user.accessToken, `${caseRevision}:${refreshVersion}`);
+  const history = useWorkflowResource(user.role !== "MSME_REP" ? warningHistoryPath(id, historyPage) : null, user.accessToken, `${revision}:${refreshVersion}`);
+  const escalation = useWorkflowResource(user.role === "RISK_ADMIN" ? `/warnings/${id}/recommendation` : null, user.accessToken, `${caseRevision}:${refreshVersion}`);
+  const warning = resource.data;
+  const caseClosed = ["CLOSED", "CLOSED_REVIEWED"].includes(warning?.warningStatus);
+  const adminCanAddNotes = user.role === "RISK_ADMIN" && !caseClosed
+    && (warning?.warningStatus === "ESCALATED" || escalation.data?.adminNotesAvailable === true);
   const events = listOf(history.data);
   const choices = warning ? permittedDecisions(user.role, warning.warningStatus, business.isActive === "Y") : [];
   function saved(updated) {
-    setWarningOverride(updated);
+    setCaseRevision(v => v + 1);
     setMessage(`Decision recorded. Warning status: ${humanize(updated.warningStatus)}.`);
     setHistoryPage(0); setRevision(v => v + 1); onChanged(updated);
   }
@@ -66,23 +93,25 @@ function WarningCase({ id, user, business, onChanged, onClose }) {
     setRevision(v => v + 1);
     try {
       const updated = await apiRequest(`/warnings/${id}`, { token: user.accessToken });
-      setWarningOverride(updated);
+      setCaseRevision(v => v + 1);
       onChanged(updated);
     } catch {
       setMessage(`${message} The warning status could not be refreshed. Use Reload case to retry.`);
       onChanged();
     }
   }
-  return <section className="panel" aria-label="Warning case details"><div className="panel-heading"><div><h2>Warning #{id}</h2><p>Case evidence, decisions and activity</p></div><div className="management-toolbar"><button className="button secondary" disabled={resource.loading} onClick={() => { setWarningOverride(null); setCaseRevision(v => v + 1); setRevision(v => v + 1); }}>Reload case</button><button className="icon-button" onClick={onClose} aria-label="Close warning details"><X size={18} /></button></div></div>
+  return <section className="panel" aria-label="Warning case details"><div className="panel-heading"><div><h2>Warning #{id}</h2><p>Case evidence, decisions and activity</p></div><div className="management-toolbar"><button className="button secondary" disabled={resource.loading} onClick={() => { setCaseRevision(v => v + 1); setRevision(v => v + 1); }}>Reload case</button><button className="icon-button" onClick={onClose} aria-label="Close warning details"><X size={18} /></button></div></div>
     {message && <div className="workflow-inset notice snapshot-success" role="status">{message}</div>}
     <ResourceState resource={resource}>{warning && <>
       <div className="workflow-summary"><WorkflowStatus value={warning.warningStatus} /><span>Assessment #{warning.assessmentId}</span><span>{dateLabel(warning.createdAt)}</span></div>
       <div className="workflow-inset"><h3 className="workflow-title">{humanize(warning.primaryDriver)}</h3><p className="management-help">{warning.whyNowText}</p><p className="recommended-action">{warning.recommendedAction}</p></div>
       {choices.length > 0 ? <DecisionForm key={`${revision}:${warning.warningStatus}`} warning={warning} choices={choices} token={user.accessToken} onSaved={saved} />
         : user.role !== "MSME_REP" && <p className="workflow-inset management-help">{business.isActive !== "Y" ? "This business is inactive. Case changes are disabled." : "No decisions are available for your role in this warning's current status."}</p>}
+      {(user.role === "RM" || adminCanAddNotes) && <WarningNoteForm warningId={id} token={user.accessToken} disabled={business.isActive !== "Y" || ["CLOSED", "CLOSED_REVIEWED"].includes(warning.warningStatus)} onSaved={() => interventionChanged("Note added to the recommended action and activity history.")} />}
+      {user.role === "RISK_ADMIN" && !caseClosed && warning.warningStatus !== "ESCALATED" && escalation.error && <p className="workflow-inset notice error" role="alert">Could not check Admin notes availability: {escalation.error} Use Reload case to retry.</p>}
       <InterventionWorkflow warning={warning} business={business} user={user} refreshVersion={revision} onChanged={interventionChanged} />
     </>}</ResourceState>
-    {user.role !== "MSME_REP" && <><div className="panel-heading"><div><h2>Activity history</h2><p>Recorded actors, decisions and reasons</p></div></div><ResourceState resource={history} empty={!events.length}><ol className="workflow-timeline">{events.map(event => <li key={event.activityId}><span className="workflow-timeline-dot" /><div><strong>{humanize(event.actionCode)}</strong><small>{dateLabel(event.createdAt)} · {humanize(event.actorType)} #{event.actorUserId}</small><p>{event.description}</p></div></li>)}</ol></ResourceState><WorkflowPagination page={historyPage} onPage={setHistoryPage} loading={history.loading} count={history.data?.totalElements} hasNext={!history.error && (history.data?.last === false || (history.data?.last == null && events.length === 10))} /></>}
+    {user.role !== "MSME_REP" && <><div className="panel-heading"><div><h2>Activity history</h2><p>Recorded actors, decisions, reasons and case notes</p></div></div><ResourceState resource={history} empty={!events.length}><ol className="workflow-timeline">{events.map(event => <li key={event.activityId}><span className="workflow-timeline-dot" /><div><strong>{humanize(event.actionCode)}</strong><small>{dateLabel(event.createdAt)} · {humanize(event.actorType)} #{event.actorUserId}</small><p className="workflow-reason">{event.description}</p></div></li>)}</ol></ResourceState><WorkflowPagination page={historyPage} onPage={setHistoryPage} loading={history.loading} count={history.data?.totalElements} hasNext={!history.error && (history.data?.last === false || (history.data?.last == null && events.length === 10))} /></>}
   </section>;
 }
 
@@ -91,11 +120,22 @@ export default function WarningWorkflow({ business, user, onWarningSaved }) {
   const [status, setStatus] = useState("");
   const [revision, setRevision] = useState(0);
   const [caseId, setCaseId] = useState(null);
+  useEffect(() => {
+    function refresh() {
+      if (document.visibilityState === "visible") setRevision(value => value + 1);
+    }
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
+  }, []);
   const resource = useWorkflowResource(warningsPath(business.msmeId, page, status), user.accessToken, revision);
   const rows = listOf(resource.data);
   function changed(warning) { setRevision(v => v + 1); if (warning) onWarningSaved(warning); }
   return <div className="workflow-stack"><section className="panel"><div className="panel-heading"><div><h2>Warnings & decisions</h2><p>{user.role === "MSME_REP" ? "Read-only warnings for your business." : "Open a warning to review evidence, make a permitted decision and view its history."}</p></div><div className="management-toolbar"><div className="snapshot-field"><label htmlFor="warning-filter">Status</label><select id="warning-filter" value={status} onChange={e => { setStatus(e.target.value); setPage(0); }}><option value="">All statuses</option>{statuses.map(s => <option value={s} key={s}>{humanize(s)}</option>)}</select></div><button className="button secondary" disabled={resource.loading} onClick={() => setRevision(v => v + 1)}>Reload warnings</button></div></div>
     <ResourceState resource={resource} empty={!rows.length}><div className="warning-list">{rows.map(w => <article className="warning-item" key={w.warningId}><div className="warning-symbol"><CircleAlert size={20} /></div><div className="warning-body"><div className="warning-title"><h3>{humanize(w.primaryDriver)}</h3><WorkflowStatus value={w.warningStatus} /></div><p>{w.whyNowText}</p>{w.recommendedAction && <p className="recommended-action">{w.recommendedAction}</p>}<small>{dateLabel(w.createdAt)} · Warning #{w.warningId}</small><button className="table-open" onClick={() => setCaseId(w.warningId)} aria-label={`Open warning ${w.warningId}`}>{user.role === "MSME_REP" ? "View details" : "Review case"}</button></div></article>)}</div></ResourceState>
     <WorkflowPagination page={page} onPage={setPage} loading={resource.loading} count={resource.data?.totalElements} hasNext={!resource.error && (resource.data?.last === false || (resource.data?.last == null && rows.length === 10))} />
-  </section>{caseId && <WarningCase key={caseId} id={caseId} business={business} user={user} onChanged={changed} onClose={() => setCaseId(null)} />}</div>;
+  </section>{caseId && <WarningCase key={caseId} id={caseId} business={business} user={user} refreshVersion={revision} onChanged={changed} onClose={() => setCaseId(null)} />}</div>;
 }

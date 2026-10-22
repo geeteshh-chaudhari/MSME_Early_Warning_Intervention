@@ -18,3 +18,5 @@ export const followUpsPath = (id, page = 0, size = 10) => `/interventions/${id}/
 export const createIntervention = (token, warningId, body) => apiRequest(`/warnings/${warningId}/interventions`, { token, method: "POST", body });
 export const updateIntervention = (token, id, body) => apiRequest(`/interventions/${id}`, { token, method: "PATCH", body });
 export const recordFollowUp = (token, id, body) => apiRequest(`/interventions/${id}/follow-ups`, { token, method: "POST", body });
+
+export const addWarningNote = (token, id, notes) => apiRequest(`/warnings/${id}/notes`, { token, method: "POST", body: { notes } });

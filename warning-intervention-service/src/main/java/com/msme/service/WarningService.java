@@ -105,11 +105,14 @@ public class WarningService {
         if (request.getReason() == null || request.getReason().isBlank()) {
             throw new InvalidRequestException("Decision reason is required");
         }
-        if (Set.of("ACCEPT", "REJECT", "ESCALATE").contains(decision)) {
+        if ("CLOSE".equals(decision) && "RM".equals(access.currentUser().getRole())) {
+            requireState(warning, "INTERVENTION_ACTIVE");
+            warning.setWarningStatus("CLOSED");
+        } else if (Set.of("ACCEPT", "REJECT", "ESCALATE").contains(decision)) {
             access.requireRole("RM");
             requireState(warning, "OPEN", "UNDER_REVIEW", "INTERVENTION_ACTIVE");
             if ("INTERVENTION_ACTIVE".equals(prior) && !"ESCALATE".equals(decision)) {
-                throw new DuplicateResourceException("An active intervention can only be escalated or followed up");
+                throw new DuplicateResourceException("An active intervention can only be escalated, closed or followed up");
             }
             warning.setWarningStatus(switch (decision) {
                 case "ACCEPT" -> "UNDER_REVIEW";
@@ -139,6 +142,22 @@ public class WarningService {
                 page(page, size, "activityId")).map(ResponseMapper::toResponse);
     }
 
+    @PreAuthorize("hasAnyRole('RM', 'RISK_ADMIN')")
+    public ActivityLogResponse addNote(Long id, CreateWarningNoteRequest request) {
+        var warning = writable(id);
+        String notes = request.getNotes();
+        if (notes == null || notes.isBlank() || notes.length() > 4000) {
+            throw new InvalidRequestException("Notes must contain between 1 and 4000 characters");
+        }
+        String prefix = "RISK_ADMIN".equals(access.currentUser().getRole()) ? "Admin: " : "Rm: ";
+        String note = prefix + notes.trim();
+        String existingAction = warning.getRecommendedAction();
+        warning.setRecommendedAction(existingAction == null || existingAction.isBlank()
+                ? note : existingAction + ",\n" + note);
+        return ResponseMapper.toResponse(audit(warning, "NOTE_ADDED", note,
+                warning.getWarningStatus(), warning.getWarningStatus()));
+    }
+
     Warning readable(Long id) {
         var warning = warnings.findById(id).orElseThrow(() -> new ResourceNotFoundException("Warning not found"));
         access.authorize(assessment(warning.getAssessmentId()).getMsmeId(), false);
@@ -163,6 +182,16 @@ public class WarningService {
         return "ESCALATED".equals(warning.getWarningStatus())
                 || activities.existsByRelatedEntityTypeAndRelatedEntityIdAndActionCode("WARNING", id, "ESCALATE")
                 || activities.existsByRelatedEntityTypeAndRelatedEntityIdAndActionCode("WARNING", id, "FOLLOW_UP_ESCALATED");
+    }
+
+    @Transactional(readOnly = true)
+    public boolean adminNotesAvailable(Long id) {
+        var warning = readable(id);
+        if (isClosed(warning)) return false;
+        if ("ESCALATED".equals(warning.getWarningStatus())) return true;
+        return activities.findFirstByRelatedEntityTypeAndRelatedEntityIdAndActionCodeInOrderByActivityIdDesc(
+                "WARNING", id, Set.of("ESCALATE", "FOLLOW_UP_ESCALATED", "CONFIRM", "RETURN"))
+                .map(activity -> "CONFIRM".equals(activity.getActionCode())).orElse(false);
     }
 
     void requireOwner(Warning warning) {
@@ -203,7 +232,7 @@ public class WarningService {
         }
     }
 
-    void audit(Warning warning, String action, String reason, String prior, String next) {
+    ActivityLog audit(Warning warning, String action, String reason, String prior, String next) {
         var entry = new ActivityLog();
         entry.setMsmeId(assessment(warning.getAssessmentId()).getMsmeId());
         entry.setActorUserId(access.currentUser().getUserId());
@@ -216,6 +245,6 @@ public class WarningService {
         // Only internally defined statuses and numeric IDs are interpolated into JSON.
         entry.setMetadataJson("{\"previousStatus\":" + (prior == null ? "null" : "\"" + prior + "\"")
                 + ",\"nextStatus\":\"" + next + "\",\"assessmentId\":" + warning.getAssessmentId() + "}");
-        activities.save(entry);
+        return activities.save(entry);
     }
 }

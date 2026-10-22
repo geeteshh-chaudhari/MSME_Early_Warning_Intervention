@@ -37,6 +37,13 @@ public class WarningController {
         return ResponseEntity.ok(warningService.decide(id, request));
     }
 
+    @PostMapping("/{id}/notes")
+    public ResponseEntity<ActivityLogResponse> addNote(@PathVariable Long id,
+            @Valid @RequestBody CreateWarningNoteRequest request) {
+        var result = warningService.addNote(id, request);
+        return ResponseEntity.created(URI.create("/api/warnings/" + id + "/history")).body(result);
+    }
+
     @GetMapping("/{id}/history")
     public ResponseEntity<Page<ActivityLogResponse>> history(@PathVariable Long id,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
