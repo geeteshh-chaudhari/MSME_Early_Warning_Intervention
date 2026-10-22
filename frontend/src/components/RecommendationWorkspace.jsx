@@ -65,7 +65,12 @@ function RecommendationRequest({ business, user, month }) {
   </>;
 }
 
-export default function RecommendationWorkspace({ business, user }) {
+export default function RecommendationWorkspace(props) {
+  if (props.user.role !== "RM") return <p role="alert">Only the assigned RM can access recommendations.</p>;
+  return <RmRecommendationWorkspace {...props} />;
+}
+
+function RmRecommendationWorkspace({ business, user }) {
   const period = useReportingPeriod(user, business);
   const active = business.isActive === "Y";
   return <div className="workflow-stack"><section className="panel"><div className="panel-heading"><div><h2>Choose a reporting month</h2><p>Use submitted data from a completed month.</p></div><button className="button secondary" disabled={period.resource.loading} onClick={period.reload}>Reload reporting months</button></div><div className="workflow-inset">

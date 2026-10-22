@@ -77,7 +77,10 @@ def create_app(settings=None, verifier=None, access=None, repository=None, disco
         from .api_security import unauthorized
         if credentials is None or credentials.scheme.lower() != "bearer":
             raise unauthorized()
-        return app.state.verifier.verify(credentials.credentials)
+        identity = app.state.verifier.verify(credentials.credentials)
+        if identity[1] != "RM":
+            raise HTTPException(403, "Only the assigned RM can access recommendations.")
+        return identity
 
     @app.exception_handler(Exception)
     async def unexpected_error(request, exc):
@@ -91,7 +94,7 @@ def create_app(settings=None, verifier=None, access=None, repository=None, disco
 
     @app.post("/api/recommendations", tags=["Recommendations"],
               summary="Generate evidence-based MSME recommendations",
-              description="Analyse one active MSME for a completed reporting month. Risk Admin: any business; RM: assigned business; representative: linked business. Five deterministic tools calculate twenty-one metrics from up to forty-eight months. metrics_only skips Ollama. Normal generation uses a local model and at most one validation repair. This endpoint performs no database writes or case decisions.",
+              description="Assigned RM only. Analyse one active MSME for a completed reporting month. Five deterministic tools calculate twenty-one metrics from up to forty-eight months. metrics_only skips Ollama. Normal generation uses a local model and at most one validation repair. This endpoint performs no database writes or case decisions.",
               responses={200: {'description': 'Full generated advice, metrics-only evidence, or insufficient-data result. '
                       'Full numeric evidence is returned separately from qualitative prose.',
        'content': {'application/json': {'schema': {'type': 'object',

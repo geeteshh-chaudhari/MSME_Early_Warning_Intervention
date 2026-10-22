@@ -45,6 +45,7 @@ class WarningWorkflowTests {
     @Autowired JdbcTemplate jdbc;
     @Autowired JwtService jwt;
     @Autowired WebApplicationContext webContext;
+    @Autowired com.msme.controller.RecommendationController recommendations;
     @MockitoSpyBean ActivityLogRepository activities;
     private final LocalDate month = LocalDate.now().withDayOfMonth(1);
 
@@ -79,6 +80,22 @@ class WarningWorkflowTests {
     @Test void healthyAssessmentCannotWarn() {
         assertNull(warnings.createAutomatic(3L));
         assertThrows(InvalidRequestException.class, () -> warnings.createWarning(new CreateWarningRequest(3L)));
+    }
+
+    @Test void onlyAssignedRmCanAccessRecommendations() {
+        long id = create();
+        String advice = "{\"summary\":\"Review collections\",\"actions\":[]}";
+        jdbc.update("update warning set recommended_action=? where warning_id=?", advice, id);
+        assertEquals(advice, recommendations.state(id).get("actionText"));
+        for (String role : new String[]{"RISK_ADMIN", "MSME_REP"}) {
+            login(role, 7L, 1L);
+            assertNull(warnings.getWarning(id).getRecommendedAction());
+            assertNull(warnings.getWarnings(1L, null, 0, 10).getContent().getFirst().getRecommendedAction());
+            assertThrows(AccessDeniedException.class, () -> recommendations.state(id));
+            assertThrows(AccessDeniedException.class, () -> recommendations.generate(id));
+        }
+        login("RM", 99L, null);
+        assertThrows(ForbiddenOperationException.class, () -> recommendations.state(id));
     }
 
     @Test void repeatedRmActionsAppendToOneInterventionAndPreserveJson() {

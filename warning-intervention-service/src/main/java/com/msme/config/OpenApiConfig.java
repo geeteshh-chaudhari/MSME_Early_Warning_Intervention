@@ -103,6 +103,7 @@ public class OpenApiConfig {
             if (path.equals("/api/snapshots")) return List.of("RISK_ADMIN");
             return path.contains("/period/") ? all : staff;
         }
+        if (path.endsWith("/recommendation")) return List.of("RM");
         if (path.contains("/interventions")) return method.equals("GET") ? all : List.of("RM");
         if (path.endsWith("/history") || !method.equals("GET")) return staff;
         return all;

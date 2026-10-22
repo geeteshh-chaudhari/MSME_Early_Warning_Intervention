@@ -41,7 +41,9 @@ public class WarningService {
         if (warnings.findByAssessmentId(assessment.getAssessmentId()).isPresent()) {
             throw new DuplicateResourceException("A warning already exists for this assessment");
         }
-        return createFromEvidence(assessment, false);
+        var response = createFromEvidence(assessment, false);
+        if (!"RM".equals(access.currentUser().getRole())) response.setRecommendedAction(null);
+        return response;
     }
 
     /** Called by reconciliation while it holds the assessment row lock. */
@@ -86,12 +88,18 @@ public class WarningService {
         access.authorize(msmeId, false);
         if (status != null && !STATUSES.contains(status)) throw new InvalidRequestException("Unknown warning status");
         return warnings.findForMsme(msmeId, status, page(page, size, "warningId"))
-                .map(ResponseMapper::toResponse);
+                .map(this::visibleWarning);
     }
 
     @Transactional(readOnly = true)
     @PreAuthorize("hasAnyRole('RM', 'RISK_ADMIN', 'MSME_REP')")
-    public WarningResponse getWarning(Long id) { return ResponseMapper.toResponse(readable(id)); }
+    public WarningResponse getWarning(Long id) { return visibleWarning(readable(id)); }
+
+    private WarningResponse visibleWarning(Warning warning) {
+        var response = ResponseMapper.toResponse(warning);
+        if (!"RM".equals(access.currentUser().getRole())) response.setRecommendedAction(null);
+        return response;
+    }
 
     @PreAuthorize("hasAnyRole('RM', 'RISK_ADMIN')")
     public WarningResponse decide(Long id, DecisionRequest request) {
@@ -114,7 +122,7 @@ public class WarningService {
             }
         }
         audit(warning, decision, request.getReason().trim(), prior, warning.getWarningStatus());
-        return ResponseMapper.toResponse(warning);
+        return visibleWarning(warning);
     }
 
     /** Caller holds the warning row lock, serializing appends and initial creation. */
@@ -171,7 +179,12 @@ public class WarningService {
     public Page<ActivityLogResponse> getHistory(Long id, int page, int size) {
         readable(id);
         return activities.findByRelatedEntityTypeAndRelatedEntityId("WARNING", id,
-                page(page, size, "activityId")).map(ResponseMapper::toResponse);
+                page(page, size, "activityId")).map(entry -> {
+                    var response = ResponseMapper.toResponse(entry);
+                    if (!"RM".equals(access.currentUser().getRole()) && entry.getActionCode().startsWith("RECOMMENDATION_"))
+                        response.setMetadataJson("{}");
+                    return response;
+                });
     }
 
     @PreAuthorize("hasAnyRole('RM', 'RISK_ADMIN')")
@@ -214,7 +227,7 @@ public class WarningService {
     }
 
     void requireOwner(Warning warning) {
-        access.requireRole(isEscalated(warning.getWarningId()) ? "RISK_ADMIN" : "RM");
+        access.requireRole("RM");
     }
 
     public void systemAudit(Warning warning, String action, String description, String metadata) {

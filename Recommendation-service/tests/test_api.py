@@ -82,6 +82,13 @@ class ApiTests(unittest.TestCase):
         self.access.authorize.assert_not_called()
         self.repo.load.assert_not_called()
 
+    def test_admin_and_representative_rejected_before_database_or_model(self):
+        for role in ("RISK_ADMIN", "MSME_REP"):
+            with self.subTest(role=role):
+                self.assertEqual(self.post(bearer=token(role=role)).status_code, 403)
+        self.access.authorize.assert_not_called()
+        self.repo.load.assert_not_called()
+
     def test_expired_wrong_issuer_wrong_key_and_malformed_tokens(self):
         tokens = [token(exp=datetime.now(timezone.utc)-timedelta(minutes=1)),
                   token(iss="other"), token(sub="bad"), "garbage",
@@ -150,8 +157,8 @@ class ApiTests(unittest.TestCase):
 class AuthorizationTests(unittest.TestCase):
     def test_role_and_assignment_matrix(self):
         for role, user_msme, assigned_rm, allowed in (
-            ("RISK_ADMIN", None, 99, True), ("RM", None, 7, True),
-            ("RM", None, 99, False), ("MSME_REP", 1, 99, True),
+            ("RISK_ADMIN", None, 99, False), ("RM", None, 7, True),
+            ("RM", None, 99, False), ("MSME_REP", 1, 99, False),
             ("MSME_REP", 2, 7, False), ("OTHER", 1, 7, False)):
             with self.subTest(role=role, allowed=allowed):
                 args = ((role, user_msme, "ACTIVE"), (assigned_rm, "Y"), 7, role, 1)

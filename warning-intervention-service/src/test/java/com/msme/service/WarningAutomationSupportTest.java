@@ -71,7 +71,7 @@ class WarningAutomationSupportTest {
         verifyNoInteractions(warnings, indicators, activities, access);
     }
 
-    @Test void escalationHistoryKeepsAdminOwnershipAfterStatusChanges() {
+    @Test void recommendationAccessRemainsRmOnlyAfterEscalation() {
         var warning = new Warning();
         warning.setWarningId(11L);
         warning.setWarningStatus("INTERVENTION_ACTIVE");
@@ -81,8 +81,8 @@ class WarningAutomationSupportTest {
 
         service.requireOwner(warning);
 
-        verify(access).requireRole("RISK_ADMIN");
-        verify(access, never()).requireRole("RM");
+        verify(access).requireRole("RM");
+        verify(access, never()).requireRole("RISK_ADMIN");
     }
 
     @Test void ordinaryCaseRequiresRmOwnership() {
