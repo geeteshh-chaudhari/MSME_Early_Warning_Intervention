@@ -44,7 +44,7 @@ function DecisionForm({ warning, choices, token, onSaved }) {
   </div>;
 }
 
-function WarningNoteForm({ warningId, token, disabled, onSaved }) {
+function WarningNoteForm({ warningId, token, role, disabled, onSaved }) {
   const [notes, setNotes] = useState("");
   const [validationError, setValidationError] = useState("");
   const action = useWorkflowAction();
@@ -57,7 +57,7 @@ function WarningNoteForm({ warningId, token, disabled, onSaved }) {
     if (result.ok) { setNotes(""); onSaved(); }
   }
   return <div className="workflow-inset">
-    <h3>RM / Admin notes</h3>
+    <h3>{role === "RISK_ADMIN" ? "Admin notes" : "Relationship Manager Notes"}</h3>
     <p className="management-help">Add a note to the recommended action. Each saved note is also kept in activity history with your user ID and the date and time.</p>
     <WorkflowNotice {...action} error={validationError || action.error} />
     <form onSubmit={save}><fieldset className="snapshot-fieldset" disabled={disabled || action.busy}>
@@ -107,7 +107,7 @@ function WarningCase({ id, user, business, refreshVersion, onChanged, onClose })
       <div className="workflow-inset"><h3 className="workflow-title">{humanize(warning.primaryDriver)}</h3><p className="management-help">{warning.whyNowText}</p><p className="recommended-action">{warning.recommendedAction}</p></div>
       {choices.length > 0 ? <DecisionForm key={`${revision}:${warning.warningStatus}`} warning={warning} choices={choices} token={user.accessToken} onSaved={saved} />
         : user.role !== "MSME_REP" && <p className="workflow-inset management-help">{business.isActive !== "Y" ? "This business is inactive. Case changes are disabled." : "No decisions are available for your role in this warning's current status."}</p>}
-      {(user.role === "RM" || adminCanAddNotes) && <WarningNoteForm warningId={id} token={user.accessToken} disabled={business.isActive !== "Y" || ["CLOSED", "CLOSED_REVIEWED"].includes(warning.warningStatus)} onSaved={() => interventionChanged("Note added to the recommended action and activity history.")} />}
+      {(user.role === "RM" || adminCanAddNotes) && <WarningNoteForm warningId={id} token={user.accessToken} role={user.role} disabled={business.isActive !== "Y" || ["CLOSED", "CLOSED_REVIEWED"].includes(warning.warningStatus)} onSaved={() => interventionChanged("Note added to the recommended action and activity history.")} />}
       {user.role === "RISK_ADMIN" && !caseClosed && warning.warningStatus !== "ESCALATED" && escalation.error && <p className="workflow-inset notice error" role="alert">Could not check Admin notes availability: {escalation.error} Use Reload case to retry.</p>}
       <InterventionWorkflow warning={warning} business={business} user={user} refreshVersion={revision} onChanged={interventionChanged} />
     </>}</ResourceState>
