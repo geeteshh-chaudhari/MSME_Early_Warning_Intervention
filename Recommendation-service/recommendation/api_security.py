@@ -44,7 +44,9 @@ class TokenVerifier:
 
 
 class OracleAccess:
-    def __init__(self, settings, user_schema=""):
+    def __init__(self, settings, user_schema="", allow_representatives=False, allow_inactive_reads=False):
+        self.allow_representatives = allow_representatives
+        self.allow_inactive_reads = allow_inactive_reads
         self.settings = settings
         if user_schema and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_$#]*", user_schema):
             raise ValueError("ORACLE_USER_SCHEMA must be a simple Oracle identifier.")
@@ -53,17 +55,19 @@ class OracleAccess:
                            if settings.profile_schema else "MSME")
 
     @staticmethod
-    def enforce(user, business, user_id, token_role, msme_id):
+    def enforce(user, business, user_id, token_role, msme_id, allow_representatives=False, allow_inactive_reads=False):
         if not user or str(user[2]).upper() != "ACTIVE" or user[0] != token_role:
             raise unauthorized()
-        if token_role != "RM":
+        if token_role not in ("RM", "RISK_ADMIN") and not (allow_representatives and token_role == "MSME_REP"):
             raise HTTPException(403, "Role cannot access recommendations.")
         # Conceal existence from users without an assignment.
         if not business:
             raise HTTPException(403, "MSME unavailable or access denied.")
-        if business[0] != user_id:
+        if token_role == "RM" and business[0] != user_id:
             raise HTTPException(403, "You are not assigned to this MSME.")
-        if business[1] != "Y":
+        if token_role == "MSME_REP" and user[1] != msme_id:
+            raise HTTPException(403, "You cannot access another MSME.")
+        if business[1] != "Y" and not (allow_inactive_reads and token_role in ("RM", "RISK_ADMIN")):
             raise HTTPException(403, "MSME is inactive.")
 
     def authorize(self, user_id, token_role, msme_id):
@@ -80,5 +84,5 @@ class OracleAccess:
                     raise unauthorized()
                 cur.execute(f"SELECT assigned_rm_id, is_active FROM {self.msme_table} "
                             "WHERE msme_id = :msme_id", {"msme_id": msme_id})
-                self.enforce(user, cur.fetchone(), user_id, token_role, msme_id)
+                self.enforce(user, cur.fetchone(), user_id, token_role, msme_id, self.allow_representatives, self.allow_inactive_reads)
             conn.rollback()

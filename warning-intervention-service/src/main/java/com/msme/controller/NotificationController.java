@@ -11,7 +11,8 @@ public class NotificationController {
     @GetMapping public List<Map<String,Object>> list(@RequestParam(defaultValue="0") long after){
         var u=access.currentUser();
         String scope=switch(u.getRole()) {case "RISK_ADMIN"->"1=1";case "RM"->"m.assigned_rm_id="+u.getUserId();case "MSME_REP"->"m.msme_id="+Objects.requireNonNullElse(u.getMsmeId(),-1L);default->"1=0";};
-        String events="'CONFIG_CREATED','ASSESSMENT_COMPLETED','WARNING_CREATED','RECOMMENDATION_GENERATED','INTERVENTION_CREATED','CLOSE','REJECT'";
+        String events="'CONFIG_CREATED','ASSESSMENT_COMPLETED','WARNING_CREATED','INTERVENTION_CREATED','INTERVENTION_APPENDED','CLOSE','REJECT'";
+        if("RM".equals(u.getRole()) || "RISK_ADMIN".equals(u.getRole()))events+=",'RECOMMENDATION_GENERATED'";
         if("RM".equals(u.getRole()) || "RISK_ADMIN".equals(u.getRole()))events+=",'ZERO_REVENUE_ASSESSED'";
         if("RM".equals(u.getRole()))events+=",'ZERO_REVENUE_SUBMITTED'";
         if("RISK_ADMIN".equals(u.getRole()))events+=",'MSME_REGISTERED','ESCALATE'";

@@ -6,6 +6,7 @@ import {
 } from "react-router";
 
 import { AuthProvider } from "./context/AuthContext";
+import { NotificationProvider } from "./context/NotificationContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -13,7 +14,7 @@ import Dashboard from "./pages/Dashboard";
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
+      <AuthProvider><NotificationProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
 
@@ -30,7 +31,7 @@ export default function App() {
             element={<Navigate to="/dashboard" replace />}
           />
         </Routes>
-      </AuthProvider>
+      </NotificationProvider></AuthProvider>
     </BrowserRouter>
   );
 }

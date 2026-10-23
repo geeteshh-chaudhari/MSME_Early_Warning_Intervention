@@ -88,11 +88,12 @@ public class RiskAssessmentRepository {
             Long msmeId) {
 
         String sql = """
-            SELECT *
-            FROM RISK_ASSESSMENT
-            WHERE MSME_ID = :msmeId
-            ORDER BY ASSESSMENT_DATE DESC,
-                     ASSESSMENT_ID DESC
+            SELECT a.*
+            FROM RISK_ASSESSMENT a
+            JOIN FINANCIAL_SNAPSHOT s ON s.SNAPSHOT_ID = a.SNAPSHOT_ID AND s.MSME_ID = a.MSME_ID
+            WHERE a.MSME_ID = :msmeId
+            ORDER BY s.REPORTING_PERIOD DESC,
+                     a.ASSESSMENT_ID DESC
             FETCH FIRST 1 ROW ONLY
             """;
 
@@ -109,11 +110,12 @@ public class RiskAssessmentRepository {
             int size) {
 
         String sql = """
-            SELECT *
-            FROM RISK_ASSESSMENT
-            WHERE MSME_ID = :msmeId
-            ORDER BY ASSESSMENT_DATE DESC,
-                     ASSESSMENT_ID DESC
+            SELECT a.*
+            FROM RISK_ASSESSMENT a
+            JOIN FINANCIAL_SNAPSHOT s ON s.SNAPSHOT_ID = a.SNAPSHOT_ID AND s.MSME_ID = a.MSME_ID
+            WHERE a.MSME_ID = :msmeId
+            ORDER BY s.REPORTING_PERIOD DESC,
+                     a.ASSESSMENT_ID DESC
             OFFSET :offset ROWS
             FETCH NEXT :size ROWS ONLY
             """;
@@ -143,6 +145,37 @@ public class RiskAssessmentRepository {
         );
 
         return count == null ? 0 : count;
+    }
+
+    public java.time.LocalDate reportingPeriod(Long assessmentId) {
+        return jdbc.queryForObject("""
+                SELECT s.REPORTING_PERIOD FROM RISK_ASSESSMENT a
+                JOIN FINANCIAL_SNAPSHOT s ON s.SNAPSHOT_ID=a.SNAPSHOT_ID AND s.MSME_ID=a.MSME_ID
+                WHERE a.ASSESSMENT_ID=:id
+                """, new MapSqlParameterSource("id", assessmentId), java.sql.Date.class).toLocalDate();
+    }
+
+    public void lockMsme(Long msmeId) {
+        jdbc.queryForObject("SELECT MSME_ID FROM MSME WHERE MSME_ID=:id FOR UPDATE",
+                new MapSqlParameterSource("id", msmeId), Long.class);
+    }
+
+    /** Caller holds the MSME row lock. Repair pointers only, never calculation results. */
+    public void repairChronology(Long msmeId) {
+        var ordered = jdbc.query("""
+                SELECT a.* FROM RISK_ASSESSMENT a
+                JOIN FINANCIAL_SNAPSHOT s ON s.SNAPSHOT_ID=a.SNAPSHOT_ID AND s.MSME_ID=a.MSME_ID
+                WHERE a.MSME_ID=:id ORDER BY s.REPORTING_PERIOD, a.ASSESSMENT_ID
+                """, new MapSqlParameterSource("id", msmeId), rowMapper);
+        Long previous = null;
+        for (var assessment : ordered) {
+            if (!java.util.Objects.equals(previous, assessment.previousAssessmentId())) {
+                jdbc.update("UPDATE RISK_ASSESSMENT SET PREVIOUS_ASSESSMENT_ID=:previous WHERE ASSESSMENT_ID=:id AND MSME_ID=:msmeId",
+                        new MapSqlParameterSource("previous", previous).addValue("id", assessment.assessmentId())
+                                .addValue("msmeId", msmeId));
+            }
+            previous = assessment.assessmentId();
+        }
     }
 
     public Long save(RiskAssessment assessment) {

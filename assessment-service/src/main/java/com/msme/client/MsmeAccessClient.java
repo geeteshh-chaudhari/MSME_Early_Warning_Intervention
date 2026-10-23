@@ -43,6 +43,8 @@ public class MsmeAccessClient {
                 );
             }
 
+        } catch (MsmeServiceException ex) {
+            throw ex;
         } catch (RestClientException ex) {
             throw new FinancialServiceUnavailableException(
                     "MS1 is unavailable",

@@ -7,7 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/warnings/{id}/recommendation")
-@PreAuthorize("hasRole('RM')")
+@PreAuthorize("hasAnyRole('RM', 'RISK_ADMIN')")
 public class RecommendationController {
     private final RecommendationWorkflow recommendations;
     public RecommendationController(RecommendationWorkflow recommendations){this.recommendations=recommendations;}

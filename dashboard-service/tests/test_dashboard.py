@@ -118,8 +118,8 @@ class ApiTests(unittest.TestCase):
 
     def test_invalid_period_and_id(self):
         for period in ('2026-13','2026-09-01','9999-01'):
-            self.assertEqual(self.get(period).status_code,422)
-        self.assertEqual(self.get(id=0).status_code,422)
+            self.assertEqual(self.get(period).status_code,400)
+        self.assertEqual(self.get(id=0).status_code,400)
         self.repository.load.assert_not_called()
 
     def test_missing_month_response(self):
@@ -133,7 +133,7 @@ class ApiTests(unittest.TestCase):
 
     def test_invalid_records_response(self):
         self.repository.load.return_value['snapshots'][-1]['revenue']=-1
-        self.assertEqual(self.get().status_code,422)
+        self.assertEqual(self.get().status_code,400)
 
     def test_login_uses_existing_service_and_verifies_returned_token(self):
         with patch('dashboard.api.login_to_msme',return_value={'access_token':'signed-token'}) as login:

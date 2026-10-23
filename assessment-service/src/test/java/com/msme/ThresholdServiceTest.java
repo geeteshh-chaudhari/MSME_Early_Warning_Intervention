@@ -43,11 +43,11 @@ class ThresholdServiceTest {
             LocalDateTime.of(2026, 9, 1, 0, 0);
 
     @Test
-    void createStoresPendingProposalWithNextVersion() {
+    void createStoresImmediatelyUsableVersion() {
         when(repository.findNextVersion(100L)).thenReturn(2);
         when(repository.save(any(ThresholdConfig.class))).thenReturn(1L);
         when(repository.findById(1L))
-                .thenReturn(Optional.of(threshold(ThresholdStatus.PENDING)));
+                .thenReturn(Optional.of(threshold(ThresholdStatus.APPROVED)));
 
         ThresholdResponse result = service.create(createRequest(), 10L);
 
@@ -61,7 +61,7 @@ class ThresholdServiceTest {
         assertAll(
                 () -> assertEquals(100L, saved.msmeId()),
                 () -> assertEquals(2, saved.versionNo().intValue()),
-                () -> assertEquals(ThresholdStatus.PENDING, saved.status()),
+                () -> assertEquals(ThresholdStatus.APPROVED, saved.status()),
                 () -> assertEquals(10L, saved.proposedByUserId()),
                 () -> assertEquals(new BigDecimal("15"),
                         saved.revenueDeclinePct()),
@@ -71,7 +71,7 @@ class ThresholdServiceTest {
                         saved.creditUtilisationPct()),
                 () -> assertEquals(EFFECTIVE_FROM, saved.effectiveFrom()),
                 () -> assertNull(saved.reviewedByUserId()),
-                () -> assertEquals(ThresholdStatus.PENDING, result.status())
+                () -> assertEquals(ThresholdStatus.APPROVED, result.status())
         );
 
         // Access is checked before saving and again when reading the result.
@@ -117,7 +117,7 @@ class ThresholdServiceTest {
                 .thenThrow(new DataIntegrityViolationException(
                         "Duplicate version"));
 
-        assertThrows(InvalidRequestException.class,
+        assertThrows(com.msme.exception.DuplicateAssessmentException.class,
                 () -> service.create(createRequest(), 10L));
     }
 

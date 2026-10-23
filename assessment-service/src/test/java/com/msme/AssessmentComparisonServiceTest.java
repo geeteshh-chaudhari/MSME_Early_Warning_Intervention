@@ -191,7 +191,7 @@ class AssessmentComparisonServiceTest {
                 Severity.HEALTHY,
                 null,
                 null,
-                complete.indicators().subList(0, 2)
+                complete.indicators().subList(0, 2), AFTER.toLocalDate()
         );
 
         prepare(
@@ -256,7 +256,7 @@ class AssessmentComparisonServiceTest {
                                 overdue, "30", overdueBreached),
                         indicator(IndicatorCode.CREDIT_UTILISATION,
                                 credit, "70", creditBreached)
-                )
+                ), date.toLocalDate()
         );
     }
 

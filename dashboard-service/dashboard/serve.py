@@ -6,6 +6,7 @@ from . import ROOT
 
 if __name__ == "__main__":
     load_dotenv(ROOT / ".env", override=False)
+    load_dotenv(ROOT.parent / ".env", override=False)
     # Freeze the listening port so shared settings loaded during startup cannot
     # make Eureka advertise a different port from the one bound by Uvicorn.
     port = int(os.getenv("DASHBOARD_PORT", "8086"))

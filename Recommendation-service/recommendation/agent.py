@@ -110,15 +110,17 @@ class RecommendationAgent:
             recommendation = normalize_recommendation(self.llm.generate(messages, schema))
             import sys
             print(
-                  "LLM RESPONSE:\n" + json.dumps(
+                  "LLM RESPONSE (before validation):\n" + json.dumps(
                       recommendation, indent=2, ensure_ascii=False
                   ),
                   file=sys.stderr,
             )
             try:
                 validate_recommendation(recommendation, available, metric_values)
+                print("LLM VALIDATION PASSED", file=sys.stderr)
                 break
             except ValueError as ex:
+                print(f"LLM VALIDATION FAILED (attempt {attempt + 1}/2): {ex}", file=sys.stderr)
                 if attempt:
                     raise
                 messages.append({"role": "assistant", "content": compact_dumps(recommendation)})

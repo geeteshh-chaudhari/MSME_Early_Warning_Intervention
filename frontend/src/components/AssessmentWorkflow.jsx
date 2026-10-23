@@ -12,7 +12,7 @@ function AssessmentDetails({ id, token, onClose }) {
     <div className="panel-heading"><div><h2>Assessment #{id}</h2><p>Saved evidence and applied thresholds</p></div><button className="icon-button" onClick={onClose} aria-label="Close assessment details"><X size={18} /></button></div>
     <ResourceState resource={resource}>
       {detail && <>
-        <div className="workflow-summary"><WorkflowStatus value={detail.severity} /><span>{dateLabel(detail.assessmentDate)}</span><span>Pattern: {humanize(detail.stressPattern)}</span><span>Threshold #{detail.thresholdConfigId}</span></div>
+        <div className="workflow-summary"><WorkflowStatus value={detail.severity} /><span>Reporting {String(detail.reportingPeriod || "").slice(0, 7)}</span><span>Run {dateLabel(detail.assessmentDate)}</span><span>Pattern: {humanize(detail.stressPattern)}</span><span>Threshold #{detail.thresholdConfigId}</span></div>
         <IndicatorTable indicators={detail.indicators} />
         <p className="workflow-inset management-help">Warnings are generated automatically from saved breached indicators. Open Warnings to review the result.</p>
       </>}
@@ -47,7 +47,9 @@ export default function AssessmentWorkflow({ business, user, snapshots, onAssess
   const action = useWorkflowAction();
   const resource = useWorkflowResource(assessmentHistoryPath(business.msmeId, page), user.accessToken, revision);
   const rows = listOf(resource.data);
-  const months = [...new Set(snapshots.map(s => String(s.reportingPeriod).slice(0, 7)))].sort().reverse();
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const months = [...new Set(snapshots.map(s => String(s.reportingPeriod).slice(0, 7)).filter(month => month < currentMonth))].sort().reverse();
   const active = business.isActive === "Y";
   const canRunAssessment = user.role === "RM";
   async function submit(event) {
@@ -66,7 +68,7 @@ export default function AssessmentWorkflow({ business, user, snapshots, onAssess
   function compare() {
     if (!before || !after) { setComparisonError("Select both a before and an after assessment from the history rows."); return; }
     if (before.assessmentId === after.assessmentId) { setComparisonError("Choose two different assessments."); return; }
-    if (before.msmeId !== after.msmeId || new Date(before.assessmentDate) >= new Date(after.assessmentDate)) {
+    if (before.msmeId !== after.msmeId || String(before.reportingPeriod) >= String(after.reportingPeriod)) {
       setComparisonError("Both assessments must belong to this business, with Before earlier than After."); return;
     }
     setComparisonError(""); setComparison(previous => ({ before, after, revision: (previous?.revision || 0) + 1 }));
@@ -75,7 +77,7 @@ export default function AssessmentWorkflow({ business, user, snapshots, onAssess
   return <div className="workflow-stack">
     {canRunAssessment && <section className="panel"><div className="panel-heading"><div><h2>Run an assessment</h2><p>Use submitted financial data for {business.businessName}.</p></div><Activity size={21} className="teal" /></div>
       <form className="workflow-inset" onSubmit={submit}><WorkflowNotice {...action} />
-        <p className="snapshot-description">An approved effective threshold and the required three-month financial history must be available. Existing assessments are reused without recalculating saved results.</p>
+        <p className="snapshot-description">The latest threshold version and the required three-month financial history must be available. Existing assessments are reused without recalculating saved results.</p>
         {!active && <p className="notice error">This business is inactive. New assessments are disabled.</p>}
         <fieldset className="snapshot-fieldset workflow-form-row" disabled={action.busy || !active}>
           <div className="snapshot-field"><label htmlFor="assessment-month">Reporting month</label><select id="assessment-month" value={month} onChange={e => setMonth(e.target.value)} required><option value="">Choose a submitted month</option>{months.map(m => <option key={m} value={m}>{m}</option>)}</select></div>
@@ -87,7 +89,7 @@ export default function AssessmentWorkflow({ business, user, snapshots, onAssess
     {detailId && <AssessmentDetails key={`${detailId}:${revision}`} id={detailId} token={user.accessToken} onClose={() => setDetailId(null)} />}
     <section className="panel"><div className="panel-heading"><div><h2>Assessment history</h2><p>Open details or select records for comparison. Selections are kept when changing pages.</p></div><button className="button secondary" onClick={() => setRevision(v => v + 1)} disabled={resource.loading}>Reload history</button></div>
       <ResourceState resource={resource} empty={!rows.length}><div className="table-scroll"><table><thead><tr><th>Assessment</th><th>Date</th><th>Severity</th><th>Stress pattern</th><th>Actions</th></tr></thead><tbody>
-        {rows.map(item => <tr key={item.assessmentId}><td>#{item.assessmentId}</td><td>{dateLabel(item.assessmentDate)}</td><td><WorkflowStatus value={item.severity} /></td><td>{humanize(item.stressPattern)}</td><td><div className="management-row-actions">
+        {rows.map(item => <tr key={item.assessmentId}><td>#{item.assessmentId}</td><td>{String(item.reportingPeriod || "").slice(0, 7)}<small>{dateLabel(item.assessmentDate)}</small></td><td><WorkflowStatus value={item.severity} /></td><td>{humanize(item.stressPattern)}</td><td><div className="management-row-actions">
           <button className="table-open" onClick={() => setDetailId(item.assessmentId)} aria-label={`Details for assessment ${item.assessmentId}`}>Details</button>
           <button className="table-open" aria-pressed={before?.assessmentId === item.assessmentId} onClick={() => choose("before", item)} aria-label={`Use assessment ${item.assessmentId} as before`}>Before</button>
           <button className="table-open" aria-pressed={after?.assessmentId === item.assessmentId} onClick={() => choose("after", item)} aria-label={`Use assessment ${item.assessmentId} as after`}>After</button>

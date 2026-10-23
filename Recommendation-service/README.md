@@ -10,7 +10,7 @@ The CLI reads Oracle. The authenticated API also saves generated JSON in
 
 The CLI remains available. The API runs on **8085**, registers as
 `recommendation-service` with Eureka on **8080**. Call the API directly on port
-**8085**; the recommendation gateway route has been removed.
+**8085**, or use the existing gateway /api/recommendations route from the frontend.
 
 Install `requirements.txt`, then add the entries in `api.env.example` to your
 existing service `.env`. Preserve your Oracle credentials. `JWT_SECRET` must be
@@ -30,13 +30,14 @@ private synonyms. No new column or table is required. The existing column is
 named `recommended_action`, not `recommendation_action`.
 
 Each successful generation saves the complete response JSON (recommendation,
-evidence and metadata) on the latest assessment's warning for the exact MSME and
-reporting month. Each request first checks that warning: saved recommendations
-are returned without calling Ollama or overwriting the column. Older recommendation-only
-JSON and historical plain-text advice are also displayed. Empty values and pending,
-unavailable or malformed JSON trigger generation. Missing warnings, or closed warnings
-without saved advice, return 409 before calling the model. Closed warnings with saved
-advice remain readable. The API does not create warnings or change their decisions.
+evidence and metadata) for the exact requested warning_id, MSME and reporting
+month. The frontend selects an open warning explicitly. Each request reads that
+warning first: any nonempty saved value is displayed without calling Ollama or
+overwriting the column, including legacy placeholder or plain-text records.
+Only empty fields can generate. Mismatches return 404; closed warnings return
+409. Failed generation leaves the column empty for explicit retry. Concurrent
+requests in the configured single worker wait and recheck the saved value.
+The API does not create warnings or change their decisions.
 Responses identify `recommendation_source` as `saved` or `generated` and include `warning_id`.
 Evidence-only and insufficient-data responses do not overwrite recommendations.
 Database failures return 503 instead of reporting a successful save.
@@ -374,3 +375,36 @@ such as 2026%, remain checked. Date/window factual accuracy is left to the LLM
 and supplied context; this is recognition, not metadata verification. The prompt
 and repair instructions now permit these references. Exact financial magnitude
 matching, ignored signs, response structure and full tool evidence remain unchanged.
+
+## Shared environment and automatic integration ? 23 October 2026
+
+The repository-root .env is loaded after a service-local .env, without replacing
+existing shell variables. It contains the shared Oracle/JWT/schema settings,
+OLLAMA_BASE_URL, OLLAMA_MODEL=qwen3:1.7b and INTERNAL_SERVICE_TOKEN. Do not commit it.
+Start Ollama separately with `ollama serve` unless it is already running. From
+this folder start the existing server with
+`..\.venv\Scripts\python.exe -X utf8 -m recommendation.serve`.
+
+MS3 invokes the hidden POST /internal/recommendations endpoint using the shared
+X-Internal-Token and exact warning_id/msme_id/as_of. Only insertion of a new warning
+schedules one automatic attempt; old warnings are not scanned. A process restart
+does not replay interrupted attempts: use the selected warning's button if its
+field is still empty. Model prompts, calculation formulas and validation rules
+are preserved. Evidence selection now uses snapshot reporting periods even if
+assessments were created in the next calendar month. Runtime testing is pending.
+
+On Windows, double-click start-api.cmd to open CMD and start the recommendation API. It uses the service-local .venv or the repository-root .venv and pauses on startup failure. The existing start-api.ps1 is a PowerShell script; use the .cmd file for double-click startup. Start Ollama separately beforehand.
+
+## Latest access and retry rule - 23 October 2026
+
+The latest root README supersedes the earlier empty-field/RM-only policy above.
+Assigned RM and Risk Admin may view/generate/retry for a selected open warning;
+representatives cannot. New warnings contain either generated JSON or exactly
+`reccommendation service not available`. That marker is retryable; successful
+saved JSON is never replaced. Legacy null values remain accepted for compatibility.
+Existing activity logs supply notifications, with UI state held only in memory.
+91 isolated recommendation tests passed; no live Oracle/Ollama call was made.
+
+## Recommendation diagnostics - 23 October 2026
+
+Raw model output is labelled LLM RESPONSE (before validation). The terminal prints LLM VALIDATION FAILED with the attempt and validator feedback, or LLM VALIDATION PASSED. HTTP 502 now distinguishes validation rejection from Ollama generation/connection/timeout/output failures. The frontend preserves this explanation without adding the misleading Eureka availability hint to recommendation 502 errors. The existing unavailable marker, successful JSON persistence, validation policy and one repair attempt are unchanged. 93 isolated tests passed; no Oracle or model request was made.

@@ -23,12 +23,15 @@ public class WarningService {
     private final InterventionRepository interventions;
     private final ActivityLogRepository activities;
     private final CaseAccessService access;
+    private final org.springframework.context.ApplicationEventPublisher events;
 
     public WarningService(WarningRepository warnings, RiskAssessmentRepository assessments,
             AssessmentIndicatorResultRepository indicators, InterventionRepository interventions,
-            ActivityLogRepository activities, CaseAccessService access) {
+            ActivityLogRepository activities, CaseAccessService access,
+            org.springframework.context.ApplicationEventPublisher events) {
         this.warnings = warnings; this.assessments = assessments; this.indicators = indicators;
         this.interventions = interventions; this.activities = activities; this.access = access;
+        this.events = events;
     }
 
     @PreAuthorize("hasAnyRole('RM', 'RISK_ADMIN')")
@@ -42,13 +45,14 @@ public class WarningService {
             throw new DuplicateResourceException("A warning already exists for this assessment");
         }
         var response = createFromEvidence(assessment, false);
-        if (!"RM".equals(access.currentUser().getRole())) response.setRecommendedAction(null);
+        if ("MSME_REP".equals(access.currentUser().getRole())) response.setRecommendedAction(null);
         return response;
     }
 
-    /** Called by reconciliation while it holds the assessment row lock. */
+    /** Serializes repeated assessment submissions without creating duplicate warnings. */
     public WarningResponse createAutomatic(Long assessmentId) {
-        var assessment = assessment(assessmentId);
+        var assessment = assessments.findLockedById(assessmentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Assessment not found"));
         if ("HEALTHY".equals(assessment.getSeverity())) return null;
         var existing = warnings.findByAssessmentId(assessmentId);
         if (existing.isPresent()) return ResponseMapper.toResponse(existing.get());
@@ -69,7 +73,7 @@ public class WarningService {
                     i.getIndicatorCode() + " = " + i.getCalculatedValue() + ", threshold = "
                     + i.getThresholdValueUsed() + ". "
                     + Objects.toString(i.getExplanationText(), "")).collect(Collectors.joining("; ")));
-        warning.setRecommendedAction("{\"status\":\"pending\",\"actions\":[]}");
+        warning.setRecommendedAction(RecommendationWorkflow.UNAVAILABLE);
         warning.setCreatedAt(LocalDateTime.now());
         warnings.saveAndFlush(warning);
         if (automatic) {
@@ -79,6 +83,7 @@ public class WarningService {
         } else {
             audit(warning, "WARNING_CREATED", "Warning created from stored assessment evidence", null, "OPEN");
         }
+        events.publishEvent(new WarningCreatedEvent(warning.getWarningId()));
         return ResponseMapper.toResponse(warning);
     }
 
@@ -97,7 +102,7 @@ public class WarningService {
 
     private WarningResponse visibleWarning(Warning warning) {
         var response = ResponseMapper.toResponse(warning);
-        if (!"RM".equals(access.currentUser().getRole())) response.setRecommendedAction(null);
+        if ("MSME_REP".equals(access.currentUser().getRole())) response.setRecommendedAction(null);
         return response;
     }
 
@@ -115,7 +120,7 @@ public class WarningService {
             if (!Set.of("INTERVENE", "ESCALATE", "CLOSE").contains(decision))
                 throw new InvalidRequestException("Choose INTERVENE, ESCALATE or CLOSE");
             appendAction(warning, decision.toLowerCase(Locale.ROOT), request.getReason(), request.getFollowUpDate(), "CLOSE".equals(decision));
-            // Intervention closure alone never changes warning status.
+            // Both RM closure entry points close the linked warning and intervention.
             if ("CLOSE".equals(decision)) {
                 warning.setWarningStatus("CLOSED");
                 warning.setClosedAt(LocalDateTime.now());
@@ -170,6 +175,8 @@ public class WarningService {
             intervention.setIsActive("N");
             intervention.setClosedAt(LocalDateTime.now());
             intervention.setClosedByUserId(actor.getUserId());
+            warning.setWarningStatus("CLOSED");
+            warning.setClosedAt(intervention.getClosedAt());
         }
         return interventions.saveAndFlush(intervention);
     }
@@ -181,7 +188,7 @@ public class WarningService {
         return activities.findByRelatedEntityTypeAndRelatedEntityId("WARNING", id,
                 page(page, size, "activityId")).map(entry -> {
                     var response = ResponseMapper.toResponse(entry);
-                    if (!"RM".equals(access.currentUser().getRole()) && entry.getActionCode().startsWith("RECOMMENDATION_"))
+                    if ("MSME_REP".equals(access.currentUser().getRole()) && entry.getActionCode().startsWith("RECOMMENDATION_"))
                         response.setMetadataJson("{}");
                     return response;
                 });
@@ -227,7 +234,8 @@ public class WarningService {
     }
 
     void requireOwner(Warning warning) {
-        access.requireRole("RM");
+        if (!Set.of("RM", "RISK_ADMIN").contains(access.currentUser().getRole()))
+            throw new ForbiddenOperationException("Recommendation access requires RM or Risk Admin");
     }
 
     public void systemAudit(Warning warning, String action, String description, String metadata) {

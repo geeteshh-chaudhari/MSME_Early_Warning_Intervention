@@ -180,13 +180,12 @@ class AssessmentCalculatorTest {
     }
 
     @Test
-    void rejectsZeroRevenueUsedAsDenominator() {
-        assertThrows(IllegalArgumentException.class,
-                () -> calculate("0", "100", "100", "20", "60"));
+    void acceptsZeroHistoricalRevenueWithoutInventingPercentage() {
+        assertEquals(Severity.HEALTHY, calculate("0", "100", "100", "20", "60").severity());
     }
 
     @Test
-    void rejectsZeroCurrentTotalReceivables() {
+    void acceptsZeroCurrentTotalReceivables() {
         List<Snapshot> input =
                 snapshots("100", "100", "100", "20", "60");
 
@@ -195,10 +194,8 @@ class AssessmentCalculatorTest {
                 "100", "0", "0", "60", "100"
         );
 
-        assertThrows(IllegalArgumentException.class,
-                () -> calculator.calculate(
-                        List.of(input.get(0), input.get(1), invalidCurrent),
-                        thresholds));
+        assertEquals(Severity.HEALTHY, calculator.calculate(
+                List.of(input.get(0), input.get(1), invalidCurrent), thresholds).severity());
     }
 
     @Test

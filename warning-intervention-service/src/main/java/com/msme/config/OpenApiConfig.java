@@ -84,7 +84,7 @@ public class OpenApiConfig {
         var staff = List.of("RISK_ADMIN", "RM");
         if (path.equals("/api/auth/login")) return List.of();
         if (path.startsWith("/api/assessment/"))
-            return method.equals("POST") && path.contains("/thresholds") ? List.of("RISK_ADMIN") : staff;
+            return method.equals("POST") ? (path.contains("/thresholds") ? List.of("RISK_ADMIN") : List.of("RM")) : all;
         if (path.startsWith("/api/assessment-data/")) return all;
         if (path.startsWith("/api/users")) {
             if (path.equals("/api/users/me")) return all;
@@ -103,7 +103,7 @@ public class OpenApiConfig {
             if (path.equals("/api/snapshots")) return List.of("RISK_ADMIN");
             return path.contains("/period/") ? all : staff;
         }
-        if (path.endsWith("/recommendation")) return List.of("RM");
+        if (path.endsWith("/recommendation")) return staff;
         if (path.contains("/interventions")) return method.equals("GET") ? all : List.of("RM");
         if (path.endsWith("/history") || !method.equals("GET")) return staff;
         return all;

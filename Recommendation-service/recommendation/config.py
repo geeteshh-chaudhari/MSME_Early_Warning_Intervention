@@ -23,12 +23,13 @@ class Settings:
     @classmethod
     def load(cls):
         from dotenv import load_dotenv
-        # Explicit service-local file; never implicitly load a sibling service's secrets.
+        # Service-local configuration overrides shared repository defaults.
         load_dotenv(ROOT / ".env", override=False)
+        load_dotenv(ROOT.parent / ".env", override=False)
         required = [os.getenv(k, "").strip() for k in
                     ("ORACLE_USER", "ORACLE_PASSWORD", "ORACLE_DSN")]
         if any(not x or "YOUR_" in x for x in required):
-            raise ValueError("Fill ORACLE_USER, ORACLE_PASSWORD and ORACLE_DSN in the service .env.")
+            raise ValueError("Fill ORACLE_USER, ORACLE_PASSWORD and ORACLE_DSN in the service or repository-root .env.")
         settings = cls(*required,
             profile_schema=os.getenv("ORACLE_PROFILE_SCHEMA", "").strip(),
             assessment_schema=os.getenv("ORACLE_ASSESSMENT_SCHEMA", "").strip(),

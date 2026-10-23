@@ -1,3 +1,5 @@
+import { useLocation } from "react-router";
+import Notifications from "../components/Notifications";
 import { recommendationText } from "../components/workflowFormat";
 import FinancialSnapshotForm from "../components/FinancialSnapshotForm";
 import BusinessForm from "../components/BusinessForm";
@@ -279,6 +281,12 @@ function WarningList({ warnings, error }) {
 function BusinessWorkspace({ business, user, tab }) {
   const [resource, setResource] = useState(null);
   const [financialPage, setFinancialPage] = useState(0);
+  const [liveRevision, setLiveRevision] = useState(0);
+  useEffect(() => {
+    const refresh = () => setLiveRevision(value => value + 1);
+    window.addEventListener("msme-data-changed", refresh);
+    return () => window.removeEventListener("msme-data-changed", refresh);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -291,14 +299,7 @@ function BusinessWorkspace({ business, user, tab }) {
       : `/snapshots/msme/${business.msmeId}`,
   ],
 
-  ...(user.role !== "MSME_REP"
-    ? [
-        [
-          "assessments",
-          `/assessment/msmes/${business.msmeId}/assessments/latest`,
-        ],
-      ]
-    : []),
+  ["assessments", `/assessment/msmes/${business.msmeId}/assessments/latest`],
 
   [
     "warnings",
@@ -349,7 +350,7 @@ function BusinessWorkspace({ business, user, tab }) {
     });
 
     return () => controller.abort();
-  }, [business.msmeId, user]);
+  }, [business.msmeId, user, liveRevision]);
 
   if (!resource) {
     return (
@@ -388,7 +389,7 @@ function BusinessWorkspace({ business, user, tab }) {
   );
 
   const sortedAssessments = [...assessments].sort((a, b) =>
-    String(b.assessmentDate).localeCompare(String(a.assessmentDate))
+    String(b.reportingPeriod || "").localeCompare(String(a.reportingPeriod || ""))
   );
 
   const latest = sortedSnapshots[0];
@@ -418,10 +419,10 @@ function BusinessWorkspace({ business, user, tab }) {
     });
   }
 
-  if (tab === "assessments" && user.role !== "MSME_REP") {
+  if (tab === "assessments") {
     return <AssessmentWorkflow business={business} user={user} snapshots={snapshots} onAssessmentSaved={assessmentSaved} onWarningSaved={warningSaved} />;
   }
-  if (tab === "thresholds" && user.role !== "MSME_REP") {
+  if (tab === "thresholds") {
     return <ThresholdManagement business={business} user={user} />;
   }
   if (tab === "warnings") {
@@ -523,11 +524,14 @@ function BusinessWorkspace({ business, user, tab }) {
               )}
             </section>
 
-            {user.role !== "MSME_REP" && (
+            {(
               <section className="panel">
               <div className="panel-heading">
                 <div>
                   <h2>Risk overview</h2>
+                  <span className={`badge ${assessment?.severity === "HEALTHY" ? "success" : assessment ? "warning" : "neutral"}`}>
+                    Financial flag: {errors.assessments ? "Unavailable" : assessment?.severity === "HEALTHY" ? "Green" : assessment ? "Warning" : "Not assessed"}
+                  </span>
                   <p>Latest saved business assessment</p>
                 </div>
                 <ShieldCheck size={21} className="teal" />
@@ -668,12 +672,23 @@ function BusinessWorkspace({ business, user, tab }) {
 }
 
 export default function Dashboard() {
+  const location = useLocation();
+  return <DashboardWorkspace key={location.state?.notification ? location.key : "workspace"} initialNotification={location.state?.notification} />;
+}
+function notificationTab(row) {
+  if (!row) return "overview";
+  if (["CONFIG_CREATED", "MSME_REGISTERED"].includes(row.event)) return "thresholds";
+  if (row.event.startsWith("ZERO_REVENUE")) return "financials";
+  return row.event === "ASSESSMENT_COMPLETED" ? "assessments" : "warnings";
+}
+function DashboardWorkspace({ initialNotification }) {
   const { user, logout } = useAuth();
   const config = ROLE_CONFIG[user.role];
 
-  const [tab, setTab] = useState("overview");
+  const [portfolioEvents, setPortfolioEvents] = useState(0);
+  const [tab, setTab] = useState(() => notificationTab(initialNotification));
   const [businesses, setBusinesses] = useState([]);
-  const [selectedId, setSelectedId] = useState("");
+  const [selectedId, setSelectedId] = useState(() => initialNotification ? String(initialNotification.msmeId) : "");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -685,6 +700,12 @@ export default function Dashboard() {
   const [managementError, setManagementError] = useState("");
   const [managementMessage, setManagementMessage] = useState("");
   const deactivationInFlight = useRef(false);
+  useEffect(() => {
+    const refresh = () => setPortfolioEvents(value => value + 1);
+    window.addEventListener("msme-data-changed", refresh);
+    return () => window.removeEventListener("msme-data-changed", refresh);
+  }, []);
+
 
   useEffect(() => {
     const controller = new AbortController();
@@ -731,7 +752,7 @@ export default function Dashboard() {
       });
 
     return () => controller.abort();
-  }, [user, config, logout, revision]);
+  }, [user, config, logout, revision, portfolioEvents]);
 
   if (!config) {
     return (
@@ -784,6 +805,7 @@ export default function Dashboard() {
   ).size;
 
   const navItems = [
+    { id: "notifications", label: "Notifications", icon: CircleAlert },
     {
       id: "overview",
       label: "Overview",
@@ -831,8 +853,7 @@ export default function Dashboard() {
     },
   ].filter(
   (item) =>
-    (item.id !== "recommendations" || user.role === "RM") &&
-    (!["assessments", "thresholds"].includes(item.id) || user.role !== "MSME_REP")
+    (item.id !== "recommendations" || ["RM", "RISK_ADMIN"].includes(user.role))
 );
 
   const currentLabel = navItems.find(
@@ -1040,7 +1061,7 @@ export default function Dashboard() {
               <RefreshCw className="spin" size={23} />
               Loading your workspace…
             </div>
-          ) : tab === "profile" ? (
+          ) : tab === "notifications" ? <Notifications /> : tab === "profile" ? (
             <section className="panel profile-panel">
               <div className="profile-heading">
                 <div className="avatar avatar-large">
@@ -1362,7 +1383,7 @@ export default function Dashboard() {
                     key={`${selectedId}:${revision}:analytics`}
                     business={selected}
                     user={user}
-                  /> : tab === "recommendations" && user.role === "RM" ? <RecommendationWorkspace
+                  /> : tab === "recommendations" && ["RM", "RISK_ADMIN"].includes(user.role) ? <RecommendationWorkspace
                     key={`${selectedId}:${revision}:recommendations`}
                     business={selected}
                     user={user}

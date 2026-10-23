@@ -7,6 +7,7 @@ from .config import ROOT
 def main():
     import uvicorn
     load_dotenv(ROOT / ".env", override=False)
+    load_dotenv(ROOT.parent / ".env", override=False)
     uvicorn.run("recommendation.api:app", host=os.getenv("API_BIND_HOST", "127.0.0.1"),
                 port=int(os.getenv("SERVICE_PORT", "8085")), workers=1,
                 timeout_keep_alive=5)

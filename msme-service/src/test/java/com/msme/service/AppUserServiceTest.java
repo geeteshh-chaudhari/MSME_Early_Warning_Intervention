@@ -197,6 +197,15 @@ class AppUserServiceTest {
     }
 
     @Test
+    void createRepresentativeRejectsInactiveBusiness() {
+        login(10L, "RM", null);
+        msme.setIsActive("N");
+        when(msmeRepository.findById(msme.getMsmeId())).thenReturn(Optional.of(msme));
+        assertThrows(com.msme.exception.InvalidRequestException.class, ()->service.createMsmeRepresentative(createRequest()));
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
     void createRepresentativeRejectsMissingMsme() {
         login(10L, "RM", null);
 

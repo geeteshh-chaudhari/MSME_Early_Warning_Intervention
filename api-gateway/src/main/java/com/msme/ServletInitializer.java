@@ -1,11 +1,11 @@
 package com.msme;
 
 import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.boot.web.servlet.support.SpringBootServletInitializer;
 
-public class ServletInitializer extends SpringBootServletInitializer {
 
-	@Override
+/** Legacy builder helper. The reactive gateway runs through ApiGatewayApplication, not a servlet container. */
+public class ServletInitializer {
+
 	protected SpringApplicationBuilder configure(SpringApplicationBuilder application) {
 		return application.sources(ApiGatewayApplication.class);
 	}

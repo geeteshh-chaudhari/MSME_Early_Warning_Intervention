@@ -48,7 +48,7 @@ public class SecurityConfig {
                         ).hasRole("RISK_ADMIN")
 
                         .requestMatchers("/api/assessment/**")
-                        .hasAnyRole("RISK_ADMIN", "RM")
+                        .hasAnyRole("RISK_ADMIN", "RM", "MSME_REP")
 
                         .anyRequest().authenticated()
                 )

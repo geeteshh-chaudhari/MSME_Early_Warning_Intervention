@@ -13,12 +13,11 @@ Keep this folder beside `Recommendation-service`. Its existing virtual environme
 already contains the API dependencies. Start the dashboard with:
 
 ```cmd
-cd /d "C:\Users\Geetesh Chaudhari\Desktop\MSME_Early_Warning_Intervention\dashboard-service"
+cd /d "C:\Users\Atharva\git\MSME_Early_Warning_Intervention\dashboard-service"
 start-dashboard.cmd
 ```
 
-Open **http://127.0.0.1:8086**. The default configuration reuses the recommendation
-service's `.env` (Oracle and JWT settings). Nothing copies or displays credentials.
+Open **http://127.0.0.1:8086**. The default configuration loads the repository-root `.env` (Oracle and JWT settings); the recommendation service also uses that file. Nothing copies or displays credentials.
 Optional overrides go in a dashboard-local `.env`; see `.env.example`. Existing
 environment variables take priority. Do not change `SERVICE_PORT` to configure this
 dashboard; use `DASHBOARD_PORT` instead.
@@ -135,3 +134,15 @@ Verification: all 20 isolated tests passed, including real HTTP registration and
 deregistration against a test registry, custom port configuration and cleanup on
 startup failure. Live registration with the already-running dashboard requires
 restarting it with the updated source.
+
+The existing launcher tries dashboard-local .venv, repository-root .venv, then Recommendation-service/.venv. It pauses with the error if Python is missing or startup fails. No Ollama server is needed for dashboard metrics. Local .env values and existing shell variables take precedence over root defaults.
+
+## Access/evidence update - 23 October 2026
+
+The financial report API admits representatives for their own MSME, RMs for
+assigned MSMEs, and Risk Admin for all MSMEs. Authorized staff may read inactive
+business analytics; inactive representatives cannot access the business.
+Evidence follows snapshot reporting periods, including assessments saved later.
+The main React UI reaches this report API through the cookie-aware gateway;
+the existing standalone dashboard and bearer clients remain available.
+21 isolated dashboard tests passed without contacting Oracle or Ollama.

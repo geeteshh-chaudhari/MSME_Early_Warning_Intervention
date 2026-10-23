@@ -60,27 +60,14 @@ public class AssessmentCalculator {
         Snapshot middle = snapshots.get(1);
         Snapshot current = snapshots.get(2);
 
-        BigDecimal firstDecline = percentage(
-                oldest.revenue().subtract(middle.revenue()),
-                oldest.revenue()
-        );
-
-        BigDecimal secondDecline = percentage(
-                middle.revenue().subtract(current.revenue()),
-                middle.revenue()
-        );
-
-        boolean revenueBreached =
-                firstDecline.compareTo(
-                        thresholds.revenueDeclinePct()) >= 0
-                &&
-                secondDecline.compareTo(
-                        thresholds.revenueDeclinePct()) >= 0;
-
-        BigDecimal overduePct = percentage(
-                current.overdueReceivables(),
-                current.totalReceivables()
-        );
+        BigDecimal firstDecline = decline(oldest.revenue(), middle.revenue());
+        BigDecimal secondDecline = decline(middle.revenue(), current.revenue());
+        boolean zeroRevenue = current.revenue().signum() == 0;
+        boolean revenueBreached = zeroRevenue || (firstDecline != null && secondDecline != null
+                && firstDecline.compareTo(thresholds.revenueDeclinePct()) >= 0
+                && secondDecline.compareTo(thresholds.revenueDeclinePct()) >= 0);
+        BigDecimal overduePct = current.totalReceivables().signum() == 0 ? BigDecimal.ZERO
+                : percentage(current.overdueReceivables(), current.totalReceivables());
 
         boolean overdueBreached =
                 overduePct.compareTo(
@@ -102,7 +89,7 @@ public class AssessmentCalculator {
         if (creditBreached) count++;
 
         Severity severity =
-                Severity.fromBreachedCount(count);
+                zeroRevenue ? Severity.HIGH_PRIORITY : Severity.fromBreachedCount(count);
 
         StressPattern pattern =
                 StressPattern.determine(
@@ -119,14 +106,13 @@ public class AssessmentCalculator {
                 secondDecline,
                 thresholds.revenueDeclinePct(),
                 revenueBreached,
-                "Revenue declined by "
-                    + display(firstDecline)
-                    + "% in the first period and "
-                    + display(secondDecline)
-                    + "% in the second period. "
-                    + "Both declines must be at least "
-                    + display(thresholds.revenueDeclinePct())
-                    + "% for a breach."
+                zeroRevenue
+                    ? (secondDecline == null ? "Revenue remains zero; percentage decline is not applicable. "
+                        : "Revenue fell to zero: 100% decline. ") + "High severity; immediate RM review required."
+                    : secondDecline == null ? "Revenue resumed from zero; percentage change is not applicable. No deterioration breach."
+                    : "Revenue decline: first period " + display(firstDecline) + "; second period "
+                        + display(secondDecline) + ". Both calculable declines must be at least "
+                        + display(thresholds.revenueDeclinePct()) + " for a normal breach."
         ));
 
         indicators.add(new IndicatorCalculation(
@@ -163,6 +149,10 @@ public class AssessmentCalculator {
         );
     }
 
+    private BigDecimal decline(BigDecimal before, BigDecimal after) {
+        return before.signum() == 0 ? null : percentage(before.subtract(after), before);
+    }
+
     private BigDecimal percentage(
             BigDecimal numerator,
             BigDecimal denominator) {
@@ -177,7 +167,7 @@ public class AssessmentCalculator {
     }
 
     private String display(BigDecimal value) {
-        return value.setScale(4, RoundingMode.HALF_UP)
+        return value == null ? "not applicable" : value.setScale(4, RoundingMode.HALF_UP)
                 .toPlainString();
     }
 
@@ -251,14 +241,7 @@ public class AssessmentCalculator {
                     "Snapshots must cover three consecutive months");
         }
 
-        requirePositive(ordered.get(0).revenue(),
-                "oldest revenue");
 
-        requirePositive(ordered.get(1).revenue(),
-                "middle revenue");
-
-        requirePositive(ordered.get(2).totalReceivables(),
-                "current totalReceivables");
     }
 
     private void validateThresholds(Thresholds thresholds) {

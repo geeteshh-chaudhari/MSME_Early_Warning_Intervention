@@ -21,7 +21,7 @@ import com.msme.service.AssessmentComparisonService;
 @RestController
 @RequestMapping("/api/assessment")
 @Validated
-@PreAuthorize("hasAnyRole('RISK_ADMIN', 'RM')")
+@PreAuthorize("hasAnyRole('RISK_ADMIN', 'RM', 'MSME_REP')")
 public class AssessmentController {
 
     private final AssessmentService assessmentService;
@@ -36,7 +36,6 @@ public class AssessmentController {
     }
 
     // POST /api/assessment/assessments
-    @PostMapping("/assessments")
     @PreAuthorize("hasRole('RM')")
     public ResponseEntity<AssessmentResponse> createAssessment(
             @Valid @RequestBody CreateAssessmentRequest request) {

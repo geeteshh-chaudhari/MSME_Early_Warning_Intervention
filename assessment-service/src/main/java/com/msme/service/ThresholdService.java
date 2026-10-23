@@ -72,7 +72,7 @@ public class ThresholdService {
                 request.revenueDeclinePct(),
                 request.overdueReceivablePct(),
                 request.creditUtilisationPct(),
-                ThresholdStatus.PENDING,
+                ThresholdStatus.APPROVED,
                 adminUserId,
                 null,
                 null,
@@ -87,11 +87,7 @@ public class ThresholdService {
             return getById(id);
 
         } catch (DataIntegrityViolationException ex) {
-            throw new InvalidRequestException(
-                    "Threshold proposal conflicts with an existing "
-                            + "version or referenced MSME/user record",
-                    ex
-            );
+            throw new com.msme.exception.DuplicateAssessmentException("A threshold version was saved concurrently; reload and retry");
         }
     }
 
@@ -199,7 +195,7 @@ public class ThresholdService {
                 .findLatestApprovedEffective(msmeId, asOf)
                 .orElseThrow(() ->
                         new InvalidRequestException(
-                                "No approved effective threshold "
+                                "No threshold configuration "
                                         + "exists for MSME "
                                         + msmeId
                         )

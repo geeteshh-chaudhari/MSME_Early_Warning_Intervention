@@ -81,8 +81,7 @@ public class RestClientConfig {
                         );
                     }
 
-                    String authorization = attributes.getRequest()
-                            .getHeader(HttpHeaders.AUTHORIZATION);
+                    String authorization = com.msme.security.BrowserAuthentication.authorization(attributes.getRequest());
 
                     if (authorization == null
                             || !authorization.startsWith("Bearer ")

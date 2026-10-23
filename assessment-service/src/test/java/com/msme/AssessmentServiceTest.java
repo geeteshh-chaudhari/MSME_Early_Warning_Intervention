@@ -77,7 +77,8 @@ class AssessmentServiceTest {
                 assessmentRepository,
                 indicatorRepository,
                 transactionManager,
-                accessClient
+                accessClient,
+                org.mockito.Mockito.mock(com.msme.client.AssessmentWarningClient.class)
         );
     }
 
@@ -140,8 +141,6 @@ class AssessmentServiceTest {
                 Severity.WATCH, null, null, LocalDateTime.now()
         );
 
-        when(assessmentRepository.findLatestByMsmeId(100L))
-                .thenReturn(Optional.of(previous));
         when(assessmentRepository.save(any(RiskAssessment.class)))
                 .thenReturn(1L);
         when(assessmentRepository.findById(1L))
@@ -149,9 +148,9 @@ class AssessmentServiceTest {
 
         service.create(validRequest());
 
-        verify(assessmentRepository).save(argThat(assessment ->
-                Long.valueOf(99L).equals(
-                        assessment.previousAssessmentId())));
+        verify(assessmentRepository).lockMsme(100L);
+        verify(assessmentRepository).repairChronology(100L);
+        verify(assessmentRepository).save(argThat(assessment -> assessment.previousAssessmentId() == null));
     }
 
     @Test
@@ -246,13 +245,13 @@ class AssessmentServiceTest {
         CreateAssessmentRequest request = new CreateAssessmentRequest(
                 100L,
                 List.of(
-                        snapshot(1L, 100L, 7, "0"),
+                        snapshot(1L, 100L, 7, "-1"),
                         snapshot(2L, 100L, 8, "80"),
                         snapshot(3L, 100L, 9, "60")
                 )
         );
 
-        // Oldest revenue cannot be zero because it is a denominator.
+        // Negative financial values are invalid; zero is explicitly supported.
         assertThrows(InvalidRequestException.class,
                 () -> service.create(request));
 

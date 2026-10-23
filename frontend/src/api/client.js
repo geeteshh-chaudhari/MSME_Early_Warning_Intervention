@@ -2,13 +2,17 @@ export async function apiRequest(
   path,
   { token, body, headers, ...options } = {}
 ) {
+  const csrfCookie = document.cookie.split("; ").find(value => value.startsWith("MSME_CSRF="));
+  const csrf = csrfCookie ? decodeURIComponent(csrfCookie.slice("MSME_CSRF=".length)) : "";
   const response = await fetch(`/api${path}`, {
     ...options,
+    credentials: "same-origin",
     headers: {
       ...(body !== undefined
         ? { "Content-Type": "application/json" }
         : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(csrf ? { "X-CSRF-Token": csrf } : {}),
       ...headers,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
