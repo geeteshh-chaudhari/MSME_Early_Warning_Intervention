@@ -4,7 +4,7 @@ cd /d "%~dp0"
 set "RECOMMENDATION_PYTHON=.venv\Scripts\python.exe"
 if not exist "%RECOMMENDATION_PYTHON%" set "RECOMMENDATION_PYTHON=..\.venv\Scripts\python.exe"
 if not exist "%RECOMMENDATION_PYTHON%" (
-  echo Python environment not found. See README.md for setup.
+  echo Python environment not found. Expected a service-local or repository-root .venv.
   pause
   exit /b 1
 )

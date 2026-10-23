@@ -18,12 +18,11 @@ class Settings:
     ollama_url: str = "http://localhost:11434"
     model: str = "qwen3:1.7b"
     ollama_timeout: int = 180
-    warning_schema: str = ""
 
     @classmethod
     def load(cls):
         from dotenv import load_dotenv
-        # Service-local configuration overrides shared repository defaults.
+        # Service-local values take precedence over shared repository-root defaults.
         load_dotenv(ROOT / ".env", override=False)
         load_dotenv(ROOT.parent / ".env", override=False)
         required = [os.getenv(k, "").strip() for k in
@@ -33,12 +32,11 @@ class Settings:
         settings = cls(*required,
             profile_schema=os.getenv("ORACLE_PROFILE_SCHEMA", "").strip(),
             assessment_schema=os.getenv("ORACLE_ASSESSMENT_SCHEMA", "").strip(),
-            warning_schema=os.getenv("ORACLE_WARNING_SCHEMA", "").strip(),
             call_timeout_ms=int(os.getenv("ORACLE_CALL_TIMEOUT_MS", "30000")),
             ollama_url=os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/"),
             model=os.getenv("OLLAMA_MODEL", "qwen3:1.7b"),
             ollama_timeout=int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "180")))
-        for schema in (settings.profile_schema, settings.assessment_schema, settings.warning_schema):
+        for schema in (settings.profile_schema, settings.assessment_schema):
             if schema and not re.fullmatch(r"[A-Za-z][A-Za-z0-9_$#]*", schema):
                 raise ValueError("Schema owners must be simple Oracle identifiers.")
         url = urlparse(settings.ollama_url)

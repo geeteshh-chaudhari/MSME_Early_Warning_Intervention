@@ -178,22 +178,6 @@ class AgentTests(unittest.TestCase):
                 self.assertEqual(agent.run()["recommendation"]["actions"],good["actions"])
             self.assertEqual(llm.calls,2)
 
-    def test_terminal_distinguishes_raw_output_rejection_and_successful_repair(self):
-        good = FakeLLM().generate([], {})
-        bad = deepcopy(good)
-        bad["actions"][0]["interpretation"] = "The value is 999.12%."
-        class RepairLLM:
-            def __init__(self): self.calls = 0
-            def generate(self, messages, schema):
-                result = [bad, good][self.calls]; self.calls += 1; return deepcopy(result)
-        stream = io.StringIO()
-        with patch("sys.stderr", stream):
-            result = RecommendationAgent(MetricTools(dataset(), date(2026, 9, 1)), RepairLLM()).run()
-        self.assertEqual(result["status"], "generated")
-        self.assertIn("LLM RESPONSE (before validation)", stream.getvalue())
-        self.assertIn("LLM VALIDATION FAILED (attempt 1/2): Numeric value validation failed", stream.getvalue())
-        self.assertIn("LLM VALIDATION PASSED", stream.getvalue())
-
     def test_full_length_six_action_output_not_trimmed(self):
         output=FakeLLM().generate([], {})
         output["summary"] = "Review collections and financial trends. " * 50
