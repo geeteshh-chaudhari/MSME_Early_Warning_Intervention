@@ -1,3 +1,4 @@
+import { recommendationText } from "../components/workflowFormat";
 import FinancialSnapshotForm from "../components/FinancialSnapshotForm";
 import BusinessForm from "../components/BusinessForm";
 import RepresentativeManagement from "../components/RepresentativeManagement";
@@ -260,7 +261,7 @@ function WarningList({ warnings, error }) {
             {warning.recommendedAction && (
               <div className="recommended-action">
                 <ArrowRight size={15} />
-                {warning.recommendedAction}
+                {recommendationText(warning.recommendedAction)}
               </div>
             )}
 
@@ -830,7 +831,8 @@ export default function Dashboard() {
     },
   ].filter(
   (item) =>
-    !["assessments", "thresholds"].includes(item.id) || user.role !== "MSME_REP"
+    (item.id !== "recommendations" || user.role === "RM") &&
+    (!["assessments", "thresholds"].includes(item.id) || user.role !== "MSME_REP")
 );
 
   const currentLabel = navItems.find(
@@ -1360,7 +1362,7 @@ export default function Dashboard() {
                     key={`${selectedId}:${revision}:analytics`}
                     business={selected}
                     user={user}
-                  /> : tab === "recommendations" ? <RecommendationWorkspace
+                  /> : tab === "recommendations" && user.role === "RM" ? <RecommendationWorkspace
                     key={`${selectedId}:${revision}:recommendations`}
                     business={selected}
                     user={user}

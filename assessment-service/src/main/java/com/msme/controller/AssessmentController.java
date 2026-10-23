@@ -37,6 +37,7 @@ public class AssessmentController {
 
     // POST /api/assessment/assessments
     @PostMapping("/assessments")
+    @PreAuthorize("hasRole('RM')")
     public ResponseEntity<AssessmentResponse> createAssessment(
             @Valid @RequestBody CreateAssessmentRequest request) {
 
@@ -50,6 +51,7 @@ public class AssessmentController {
 
     // POST /api/assessment/assessments/from-finance
     @PostMapping("/assessments/from-finance")
+    @PreAuthorize("hasRole('RM')")
     public ResponseEntity<AssessmentResponse> createFromFinance(
             @Valid @RequestBody AssessmentFromFinanceRequest request) {
 

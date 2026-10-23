@@ -16,7 +16,7 @@ import tools.jackson.databind.json.JsonMapper;
 /** Saves model actions once; no database lock is held during inference. */
 @Service
 public class RecommendationWorkflow {
-    public static final String UNAVAILABLE="reccommendation service not available";
+    public static final String UNAVAILABLE="{\"status\":\"unavailable\",\"actions\":[]}";
     private final WarningRepository warnings;
     private final InterventionRepository interventions;
     private final FinancialSnapshotRepository snapshots;
@@ -75,7 +75,7 @@ public class RecommendationWorkflow {
                     if(!text.isBlank())lines.add((lines.size()+1)+". "+Objects.toString(action.get("title"),"")+": "+text);
                 }
                 if(lines.isEmpty())throw new IllegalStateException("No suggested actions");
-                actionText=String.join("\n\n",lines); evidence=raw; success=true;
+                actionText=json.writeValueAsString(recommendation); evidence=raw; success=true;
             } catch(Exception ex) {
                 org.slf4j.LoggerFactory.getLogger(getClass()).warn("Recommendation unavailable for warning {} ({})",id,ex.getClass().getSimpleName());
             }
@@ -86,9 +86,6 @@ public class RecommendationWorkflow {
                 if(manual)cases.requireOwner(w);
                 if(WarningService.isClosed(w) || generated(id))return ResponseMapper.toResponse(w);
                 w.setRecommendedAction(savedText);
-                for(var i:interventions.findByWarningId(id,org.springframework.data.domain.Pageable.unpaged()))
-                    if(i.getActionText()==null || i.getActionText().isBlank() || UNAVAILABLE.equals(i.getActionText()))
-                        i.setActionText(savedText);
                 cases.systemAudit(w,savedSuccess?"RECOMMENDATION_GENERATED":"RECOMMENDATION_UNAVAILABLE",
                     savedSuccess?"Immutable LLM actions and evidence saved":UNAVAILABLE,savedEvidence);
                 return ResponseMapper.toResponse(w);

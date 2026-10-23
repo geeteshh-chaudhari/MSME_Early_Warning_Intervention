@@ -50,7 +50,7 @@ function RecommendationRequest({ business, user, month }) {
           <div className="snapshot-actions"><button type="submit" className="button primary"><Sparkles size={16} />{state.busy ? "Analysing…" : metricsOnly ? "Load evidence" : "Generate recommendations"}</button></div>
         </fieldset>
         {state.busy && <div className="recommendation-progress" role="status"><span><RefreshCw className="spin" size={18} />{metricsOnly ? "Calculating financial evidence…" : "Generating advice from financial evidence. The local model may take a few minutes."}</span><button type="button" className="button secondary" onClick={cancel}><X size={15} />Cancel request</button></div>}
-        <p className="management-help">This analysis does not change financial records, warning decisions or intervention plans.</p>
+        <p className="management-help">Saved recommendations are displayed first. If none exist, new recommendations are generated and saved to the matching warning.</p>
       </form>
     </section>
     {data && <>
@@ -65,7 +65,12 @@ function RecommendationRequest({ business, user, month }) {
   </>;
 }
 
-export default function RecommendationWorkspace({ business, user }) {
+export default function RecommendationWorkspace(props) {
+  if (props.user.role !== "RM") return <p role="alert">Only the assigned RM can access recommendations.</p>;
+  return <RmRecommendationWorkspace {...props} />;
+}
+
+function RmRecommendationWorkspace({ business, user }) {
   const period = useReportingPeriod(user, business);
   const active = business.isActive === "Y";
   return <div className="workflow-stack"><section className="panel"><div className="panel-heading"><div><h2>Choose a reporting month</h2><p>Use submitted data from a completed month.</p></div><button className="button secondary" disabled={period.resource.loading} onClick={period.reload}>Reload reporting months</button></div><div className="workflow-inset">

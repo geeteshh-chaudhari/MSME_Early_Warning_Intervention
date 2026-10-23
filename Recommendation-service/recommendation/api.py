@@ -20,6 +20,25 @@ from .metrics import MetricTools, TOOL_DESCRIPTIONS
 log = logging.getLogger(__name__)
 
 
+def saved_result(payload):
+    """Support full API JSON, older recommendation-only JSON and legacy prose."""
+    if not payload or not payload.strip():
+        return None
+    try:
+        value = json.loads(payload)
+    except json.JSONDecodeError:
+        if payload.lstrip().startswith(("{", "[")):
+            return None
+        value = {"summary": payload, "actions": [], "limitations": []}
+    if not isinstance(value, dict) or value.get("status") in (
+            "pending", "unavailable", "insufficient_data", "metrics_only"):
+        return None
+    advice = value.get("recommendation", value)
+    if not isinstance(advice, dict) or not (advice.get("summary") or advice.get("actions")):
+        return None
+    return value if "recommendation" in value else {"recommendation": advice}
+
+
 class RecommendationRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     msme_id: int = Field(gt=0, strict=True)
@@ -77,7 +96,10 @@ def create_app(settings=None, verifier=None, access=None, repository=None, disco
         from .api_security import unauthorized
         if credentials is None or credentials.scheme.lower() != "bearer":
             raise unauthorized()
-        return app.state.verifier.verify(credentials.credentials)
+        identity = app.state.verifier.verify(credentials.credentials)
+        if identity[1] != "RM":
+            raise HTTPException(403, "Only the assigned RM can access recommendations.")
+        return identity
 
     @app.exception_handler(Exception)
     async def unexpected_error(request, exc):
@@ -91,7 +113,7 @@ def create_app(settings=None, verifier=None, access=None, repository=None, disco
 
     @app.post("/api/recommendations", tags=["Recommendations"],
               summary="Generate evidence-based MSME recommendations",
-              description="Analyse one active MSME for a completed reporting month. Risk Admin: any business; RM: assigned business; representative: linked business. Five deterministic tools calculate twenty-one metrics from up to forty-eight months. metrics_only skips Ollama. Normal generation uses a local model and at most one validation repair. This endpoint performs no database writes or case decisions.",
+              description="Assigned RM only. Return the saved WARNING.RECOMMENDED_ACTION for the selected business and completed reporting month. If missing, generate with the local model and save JSON before returning success. Missing warnings or closed warnings without saved advice return 409 before inference. metrics_only skips saved advice, Ollama and writes. No case decisions are changed.",
               responses={200: {'description': 'Full generated advice, metrics-only evidence, or insufficient-data result. '
                       'Full numeric evidence is returned separately from qualitative prose.',
        'content': {'application/json': {'schema': {'type': 'object',
@@ -153,6 +175,7 @@ def create_app(settings=None, verifier=None, access=None, repository=None, disco
  404: {'description': 'No snapshot for the exact requested reporting month',
        'content': {'application/json': {'schema': {'type': 'object',
                                                    'properties': {'detail': {'type': 'string'}}}}}},
+ 409: {'description': 'No open warning exists for the requested reporting month; recommendation was not saved.'},
  429: {'description': 'Another analysis is running in this service process. Retry-After: 10.',
        'content': {'application/json': {'schema': {'type': 'object',
                                                    'properties': {'detail': {'type': 'string'}}}}}},
@@ -175,6 +198,22 @@ def create_app(settings=None, verifier=None, access=None, repository=None, disco
                                 headers={"Retry-After": "10"})
         try:
             period = date.fromisoformat(body.as_of + "-01")
+            if not body.metrics_only:
+                try:
+                    warning = app.state.repository.recommendation_for_month(body.msme_id, period)
+                except Exception:
+                    raise HTTPException(503, "Saved recommendation lookup unavailable. Check database configuration and SELECT access to WARNING.") from None
+                if warning is None:
+                    raise HTTPException(409, "No warning exists for this business and reporting month. A recommendation cannot be saved.")
+                saved = saved_result(warning["payload"])
+                if saved is not None:
+                    saved.update(status="generated", msme_id=body.msme_id, as_of_month=period.isoformat(),
+                                 recommendation_source="saved", warning_id=warning["warning_id"])
+                    saved.setdefault("evidence", {})
+                    saved.setdefault("formula_version", "1.0")
+                    return JSONResponse(json.loads(dumps(saved)), headers={"Cache-Control": "no-store"})
+                if warning["warning_status"] in ("CLOSED", "CLOSED_REVIEWED"):
+                    raise HTTPException(409, "This warning is closed and has no saved recommendation.")
             try:
                 data = app.state.repository.load(body.msme_id, period)
             except Exception:
@@ -196,7 +235,17 @@ def create_app(settings=None, verifier=None, access=None, repository=None, disco
             except (ValueError, RuntimeError):
                 raise HTTPException(502, "Recommendation generation or validation failed. Retry, or use metrics_only to inspect the evidence.") from None
             result.update(msme_id=body.msme_id, as_of_month=period.isoformat(), formula_version="1.0")
-            return JSONResponse(json.loads(dumps(result)), headers={"Cache-Control": "no-store"})
+            if not body.metrics_only:
+                result.update(recommendation_source="generated", warning_id=warning["warning_id"])
+            payload = dumps(result)
+            if not body.metrics_only and result.get("status") == "generated":
+                try:
+                    app.state.repository.save_recommendation(body.msme_id, period, payload)
+                except ValueError:
+                    raise HTTPException(409, "Recommendation could not be saved: no open warning exists for this reporting month.") from None
+                except Exception:
+                    raise HTTPException(503, "Recommendation could not be saved. Check database configuration and UPDATE access to WARNING.RECOMMENDED_ACTION.") from None
+            return JSONResponse(json.loads(payload), headers={"Cache-Control": "no-store"})
         finally:
             app.state.work_lock.release()
 

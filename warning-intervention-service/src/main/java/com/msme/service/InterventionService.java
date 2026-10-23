@@ -31,49 +31,19 @@ public class InterventionService {
     public InterventionResponse createIntervention(Long warningId, CreateInterventionRequest request) {
         access.requireRole("RM");
         var warning = warnings.writable(warningId);
-        WarningService.requireState(warning, "UNDER_REVIEW", "INTERVENTION_ACTIVE");
-        validateDate(request.getFollowUpDate());
-        String prior = warning.getWarningStatus();
-        var active = interventions.findByWarningIdAndIsActive(warningId, "Y");
-        // Revising an active intervention preserves its reviews and starts a further cycle.
-        if (!active.isEmpty()) {
-            for (var old : active) {
-                var last = latestReview(old.getInterventionId());
-                if (last == null || !"STILL_STRESSED".equals(last.getOutcome())) {
-                    throw new DuplicateResourceException("An intervention may be revised after a STILL_STRESSED review");
-                }
-                closeIntervention(old);
-            }
-        }
-        var intervention = new Intervention();
-        intervention.setWarningId(warningId);
-        intervention.setCreatedByUserId(access.currentUser().getUserId());
-        intervention.setActionText(request.getActionText().trim());
-        intervention.setNotes(request.getNotes());
-        intervention.setFollowUpDate(request.getFollowUpDate());
-        intervention.setIsActive("Y");
-        intervention.setCreatedAt(LocalDateTime.now());
-        interventions.saveAndFlush(intervention);
-        warning.setWarningStatus("INTERVENTION_ACTIVE");
-        warnings.audit(warning, active.isEmpty() ? "INTERVENTION_CREATED" : "INTERVENTION_REVISED",
-                "Intervention " + intervention.getInterventionId() + ", follow-up " + intervention.getFollowUpDate()
-                        + ": " + intervention.getActionText() + "; notes: " + Objects.toString(intervention.getNotes(), ""),
-                prior, warning.getWarningStatus());
+        var intervention = warnings.appendAction(warning, request.getActionText(), request.getNotes(), request.getFollowUpDate());
+        warnings.audit(warning, "INTERVENTION_APPENDED", "Intervention " + intervention.getInterventionId()
+                + ": " + request.getNotes(), warning.getWarningStatus(), warning.getWarningStatus());
         return ResponseMapper.toResponse(intervention);
     }
 
-    @PreAuthorize("hasRole('RM')")
+    @PreAuthorize("hasAnyRole('RM', 'RISK_ADMIN')")
     public InterventionResponse updateIntervention(Long id, UpdateInterventionRequest request) {
-        access.requireRole("RM");
         var warning = warnings.writable(warningId(id));
-        var intervention = intervention(id);
-        WarningService.requireState(warning, "INTERVENTION_ACTIVE");
-        requireActive(intervention);
-        validateDate(request.getFollowUpDate());
-        intervention.setNotes(request.getNotes().trim());
-        intervention.setFollowUpDate(request.getFollowUpDate());
-        warnings.audit(warning, "INTERVENTION_UPDATED", "Intervention " + id + ", follow-up "
-                + request.getFollowUpDate() + ": " + request.getNotes(),
+        requireActive(intervention(id));
+        var intervention = warnings.appendAction(warning, request.getActionText(), request.getNotes(), request.getFollowUpDate());
+        if (!id.equals(intervention.getInterventionId())) throw new InvalidRequestException("Intervention mismatch");
+        warnings.audit(warning, "INTERVENTION_APPENDED", "Intervention " + id + ": " + request.getNotes(),
                 warning.getWarningStatus(), warning.getWarningStatus());
         return ResponseMapper.toResponse(intervention);
     }
@@ -100,7 +70,6 @@ public class InterventionService {
         access.requireRole("RM");
         // Read only the parent ID before locking; reload the intervention after taking the case lock.
         var warning = warnings.writable(warningId(id));
-        WarningService.requireState(warning, "INTERVENTION_ACTIVE");
         var intervention = intervention(id);
         requireActive(intervention);
         var current = warnings.assessment(request.getAssessmentId());
@@ -138,13 +107,8 @@ public class InterventionService {
         review.setKeepInterventionActive(keepActive ? "Y" : "N");
         reviews.saveAndFlush(review);
         String prior = warning.getWarningStatus();
-        if (!keepActive) {
-            warning.setWarningStatus("CLOSED");
-            warnings.closeInterventions(warning);
-        } else {
-            intervention.setFollowUpDate(request.getNextFollowUpDate());
-            if ("ESCALATED".equals(request.getOutcome())) warning.setWarningStatus("ESCALATED");
-        }
+        warnings.appendAction(warning, !keepActive ? "close" : "ESCALATED".equals(request.getOutcome()) ? "escalate" : "intervene",
+                request.getReviewNotes(), keepActive ? request.getNextFollowUpDate() : LocalDate.now());
         warnings.audit(warning, "FOLLOW_UP_" + request.getOutcome(),
                 "Intervention " + id + ", assessment " + current.getAssessmentId() + ", next follow-up "
                         + request.getNextFollowUpDate() + ": " + request.getReviewNotes(),
@@ -158,11 +122,6 @@ public class InterventionService {
 
     private Long warningId(Long id) {
         return interventions.findWarningId(id).orElseThrow(() -> new ResourceNotFoundException("Intervention not found"));
-    }
-
-    private FollowUpReview latestReview(Long id) {
-        return reviews.findByInterventionId(id).stream()
-                .max(Comparator.comparing(FollowUpReview::getReviewedAt)).orElse(null);
     }
 
     private LocalDate period(RiskAssessment assessment) {
@@ -180,9 +139,4 @@ public class InterventionService {
         if (date == null || date.isBefore(LocalDate.now())) throw new InvalidRequestException("Follow-up date must be today or later");
     }
 
-    private void closeIntervention(Intervention intervention) {
-        intervention.setIsActive("N");
-        intervention.setClosedAt(LocalDateTime.now());
-        intervention.setClosedByUserId(access.currentUser().getUserId());
-    }
 }
