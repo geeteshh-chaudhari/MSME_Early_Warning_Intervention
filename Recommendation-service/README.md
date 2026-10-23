@@ -3,7 +3,8 @@
 Python command-line agent for Oracle Database 26ai and local Ollama `qwen3:1.7b`.
 Python runs all five allowlisted tools; the model interprets their results in an
 advisory interpretation with evidence IDs. Python performs every calculation.
-It does not write to Oracle or modify the existing Java services.
+The CLI reads Oracle. The authenticated API also saves generated JSON in
+`WARNING.RECOMMENDED_ACTION` before returning success.
 
 ## Authenticated REST API and Eureka
 
@@ -21,6 +22,24 @@ The Oracle account also needs SELECT access to `APP_USER` and `MSME` for current
 account status and assignments; password hashes are never selected. Set
 `ORACLE_USER_SCHEMA` if APP_USER belongs to another owner. Existing profile and
 assessment schema settings still apply.
+
+For generation, the Oracle account needs SELECT access to `WARNING` and UPDATE
+access to its `RECOMMENDED_ACTION` CLOB column. Set `ORACLE_WARNING_SCHEMA` when
+the warning table belongs to another owner; blank uses current-schema tables or
+private synonyms. No new column or table is required. The existing column is
+named `recommended_action`, not `recommendation_action`.
+
+Each successful generation saves the complete response JSON (recommendation,
+evidence and metadata) on the latest assessment's warning for the exact MSME and
+reporting month. Each request first checks that warning: saved recommendations
+are returned without calling Ollama or overwriting the column. Older recommendation-only
+JSON and historical plain-text advice are also displayed. Empty values and pending,
+unavailable or malformed JSON trigger generation. Missing warnings, or closed warnings
+without saved advice, return 409 before calling the model. Closed warnings with saved
+advice remain readable. The API does not create warnings or change their decisions.
+Responses identify `recommendation_source` as `saved` or `generated` and include `warning_id`.
+Evidence-only and insufficient-data responses do not overwrite recommendations.
+Database failures return 503 instead of reporting a successful save.
 
 Start RegistryServer and Ollama, then the API:
 
@@ -81,7 +100,8 @@ Default addresses assume all services run on the same machine.
 Responses: 401 missing/invalid/expired token or inactive/changed-role user;
 403 disallowed role, assignment or inactive MSME; 404 missing accessible MSME or
 requested snapshot; 422 invalid request; 429 busy; 502 model/metric validation
-failure; 503 database/dependency failure. No financial records are written.
+failure; 409 no matching open warning; 503 database/dependency or save failure.
+Financial snapshots are not changed.
 
 For isolated tests without live Oracle/Ollama:
 
@@ -106,7 +126,7 @@ regardless of shell working directory; existing environment variables take prior
 `localhost:1521/FREEPDB1` if that is your actual database service. The default
 python-oracledb Thin connection needs no Oracle Instant Client for this setup.
 
-Use a read-only account with SELECT access to:
+For CLI reads, use an account with SELECT access to:
 
 - Profile owner: `MSME`, `FINANCIAL_SNAPSHOT`.
 - Assessment owner: `RISK_ASSESSMENT`, `THRESHOLD_CONFIG`, `ASSESSMENT_INDICATOR_RESULT`.

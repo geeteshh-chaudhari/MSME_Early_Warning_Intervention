@@ -50,7 +50,7 @@ function RecommendationRequest({ business, user, month }) {
           <div className="snapshot-actions"><button type="submit" className="button primary"><Sparkles size={16} />{state.busy ? "Analysing…" : metricsOnly ? "Load evidence" : "Generate recommendations"}</button></div>
         </fieldset>
         {state.busy && <div className="recommendation-progress" role="status"><span><RefreshCw className="spin" size={18} />{metricsOnly ? "Calculating financial evidence…" : "Generating advice from financial evidence. The local model may take a few minutes."}</span><button type="button" className="button secondary" onClick={cancel}><X size={15} />Cancel request</button></div>}
-        <p className="management-help">This analysis does not change financial records, warning decisions or intervention plans.</p>
+        <p className="management-help">Saved recommendations are displayed first. If none exist, new recommendations are generated and saved to the matching warning.</p>
       </form>
     </section>
     {data && <>

@@ -1,4 +1,4 @@
-"""Fixed SELECT queries, bound IDs/dates, one consistent read-only transaction."""
+"""Consistent financial reads and transactional recommendation persistence."""
 from datetime import datetime, time
 from decimal import Decimal
 from .metrics import shift_month
@@ -7,6 +7,79 @@ from .metrics import shift_month
 class OracleRepository:
     def __init__(self, settings):
         self.settings = settings
+
+    def recommendation_for_month(self, msme_id, as_of):
+        """Read the same warning targeted by save_recommendation, including its CLOB."""
+        import oracledb
+        cfg = self.settings
+        def table(owner, name):
+            return f"{owner}.{name}" if owner else name
+
+        with oracledb.connect(user=cfg.user, password=cfg.password, dsn=cfg.dsn) as conn:
+            conn.call_timeout = cfg.call_timeout_ms
+            with conn.cursor() as cur:
+                cur.execute("SET TRANSACTION READ ONLY")
+                cur.execute(f"""SELECT w.warning_id, w.warning_status, w.recommended_action
+                    FROM {table(cfg.warning_schema, 'WARNING')} w
+                    JOIN {table(cfg.assessment_schema, 'RISK_ASSESSMENT')} a
+                        ON a.assessment_id = w.assessment_id
+                    JOIN {table(cfg.profile_schema, 'FINANCIAL_SNAPSHOT')} s
+                        ON s.snapshot_id = a.snapshot_id AND s.msme_id = a.msme_id
+                    WHERE a.msme_id = :msme_id
+                        AND s.reporting_period >= :start_at AND s.reporting_period < :end_at
+                    ORDER BY a.assessment_id DESC, w.warning_id DESC
+                    FETCH FIRST 1 ROW ONLY""",
+                    {"msme_id": msme_id, "start_at": datetime.combine(as_of, time.min),
+                     "end_at": datetime.combine(shift_month(as_of, 1), time.min)})
+                row = cur.fetchone()
+                if row:
+                    payload = row[2].read() if hasattr(row[2], "read") else row[2]
+                    result = {"warning_id": int(row[0]), "warning_status": row[1], "payload": payload}
+                else:
+                    result = None
+            conn.rollback()
+        return result
+
+    def save_recommendation(self, msme_id, as_of, payload):
+        """Save response JSON on the latest open warning for this exact month.
+
+        Do not create warnings: those belong to the assessment workflow.
+        A separate connection keeps writes out of the history read transaction.
+        """
+        import oracledb
+        cfg = self.settings
+        def table(owner, name):
+            return f"{owner}.{name}" if owner else name
+
+        warning = table(cfg.warning_schema, "WARNING")
+        assessment = table(cfg.assessment_schema, "RISK_ASSESSMENT")
+        snapshot = table(cfg.profile_schema, "FINANCIAL_SNAPSHOT")
+        with oracledb.connect(user=cfg.user, password=cfg.password, dsn=cfg.dsn) as conn:
+            conn.call_timeout = cfg.call_timeout_ms
+            try:
+                with conn.cursor() as cur:
+                    cur.setinputsizes(payload=oracledb.DB_TYPE_CLOB)
+                    cur.execute(f"""UPDATE {warning} SET recommended_action = :payload
+                        WHERE warning_id = (
+                            SELECT w.warning_id FROM {warning} w
+                            JOIN {assessment} a ON a.assessment_id = w.assessment_id
+                            JOIN {snapshot} s ON s.snapshot_id = a.snapshot_id
+                                AND s.msme_id = a.msme_id
+                            WHERE a.msme_id = :msme_id
+                                AND s.reporting_period >= :start_at
+                                AND s.reporting_period < :end_at
+                            ORDER BY a.assessment_id DESC, w.warning_id DESC
+                            FETCH FIRST 1 ROW ONLY
+                        ) AND warning_status NOT IN ('CLOSED', 'CLOSED_REVIEWED')""",
+                        {"payload": payload, "msme_id": msme_id,
+                         "start_at": datetime.combine(as_of, time.min),
+                         "end_at": datetime.combine(shift_month(as_of, 1), time.min)})
+                    if cur.rowcount != 1:
+                        raise ValueError("No open warning exists for the requested reporting month.")
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
 
     def load(self, msme_id, as_of):
         import oracledb

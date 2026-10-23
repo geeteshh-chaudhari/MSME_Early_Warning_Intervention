@@ -46,6 +46,7 @@ class ApiTests(unittest.TestCase):
         self.access = Mock()
         self.repo = Mock()
         self.repo.load.return_value = dataset()
+        self.repo.recommendation_for_month.return_value = {"warning_id": 10, "warning_status": "OPEN", "payload": None}
         self.app = create_app(settings=SimpleNamespace(), verifier=TokenVerifier(KEY, ISSUER),
                               access=self.access, repository=self.repo, discovery=False)
         self.client = TestClient(self.app, raise_server_exceptions=False)
@@ -67,13 +68,104 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(result.headers["cache-control"], "no-store")
         self.access.authorize.assert_called_once_with(7, "RM", 1)
         self.repo.load.assert_called_once_with(1, date(2026, 9, 1))
+        self.repo.save_recommendation.assert_not_called()
 
     def test_recommendation_invokes_existing_agent(self):
         with patch("recommendation.api.RecommendationAgent") as agent, patch("recommendation.api.OllamaClient"):
-            agent.return_value.run.return_value = {"summary": "Stable trend", "actions": []}
+            agent.return_value.run.return_value = {
+                "status": "generated", "evidence": {},
+                "recommendation": {"summary": "Stable trend", "actions": []}}
             result = self.post(dict(self.body, metrics_only=False, question="Review collections"))
             self.assertEqual(result.status_code, 200)
             agent.return_value.run.assert_called_once_with("Review collections")
+            self.repo.save_recommendation.assert_called_once()
+            msme_id, period, payload = self.repo.save_recommendation.call_args.args
+            self.assertEqual((msme_id, period), (1, date(2026, 9, 1)))
+            self.assertEqual(json.loads(payload), result.json())
+
+    def test_saved_json_is_returned_without_model_history_reads_or_writes(self):
+        saved = {"status": "generated", "evidence": {"original": {}}, "model": "original-model",
+                 "recommendation": {"summary": "Previously saved advice", "actions": []}}
+        self.repo.recommendation_for_month.return_value["payload"] = json.dumps(saved)
+        with patch("recommendation.api.RecommendationAgent") as agent, patch("recommendation.api.OllamaClient") as llm:
+            response = self.post(dict(self.body, metrics_only=False))
+        self.assertEqual(response.status_code, 200)
+        result = response.json()
+        self.assertEqual(result["recommendation"], saved["recommendation"])
+        self.assertEqual(result["evidence"], saved["evidence"])
+        self.assertEqual(result["recommendation_source"], "saved")
+        self.assertEqual(result["warning_id"], 10)
+        self.repo.recommendation_for_month.assert_called_once_with(1, date(2026, 9, 1))
+        self.repo.load.assert_not_called()
+        self.repo.save_recommendation.assert_not_called()
+        agent.assert_not_called()
+        llm.assert_not_called()
+
+    def test_legacy_recommendations_are_displayed_without_generation(self):
+        for payload in ('{"summary":"Existing advice","actions":[]}', 'Existing advice'):
+            with self.subTest(payload=payload), patch("recommendation.api.RecommendationAgent") as agent:
+                self.repo.recommendation_for_month.return_value["payload"] = payload
+                response = self.post(dict(self.body, metrics_only=False))
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["recommendation"]["summary"], "Existing advice")
+                agent.assert_not_called()
+        self.repo.save_recommendation.assert_not_called()
+
+    def test_empty_and_placeholder_values_generate_then_save(self):
+        for payload in (None, "", "  ", '{"status":"pending","actions":[]}',
+                        '{"status":"unavailable","actions":[]}', '{}', '{invalid json'):
+            with self.subTest(payload=payload), patch("recommendation.api.RecommendationAgent") as agent, patch("recommendation.api.OllamaClient"):
+                self.repo.recommendation_for_month.return_value["payload"] = payload
+                agent.return_value.run.return_value = {"status": "generated", "recommendation": {
+                    "summary": "New advice", "actions": []}}
+                self.repo.save_recommendation.reset_mock()
+                response = self.post(dict(self.body, metrics_only=False))
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["recommendation_source"], "generated")
+                agent.return_value.run.assert_called_once()
+                self.repo.save_recommendation.assert_called_once()
+
+    def test_missing_or_closed_empty_warning_stops_before_model(self):
+        for warning in (None, {"warning_id": 10, "warning_status": "CLOSED", "payload": None},
+                        {"warning_id": 10, "warning_status": "CLOSED_REVIEWED", "payload": None}):
+            with self.subTest(warning=warning), patch("recommendation.api.RecommendationAgent") as agent:
+                self.repo.recommendation_for_month.return_value = warning
+                self.assertEqual(self.post(dict(self.body, metrics_only=False)).status_code, 409)
+                agent.assert_not_called()
+        self.repo.load.assert_not_called()
+        self.repo.save_recommendation.assert_not_called()
+
+    def test_closed_warning_saved_advice_remains_readable(self):
+        self.repo.recommendation_for_month.return_value.update(warning_status="CLOSED", payload="Existing advice")
+        self.assertEqual(self.post(dict(self.body, metrics_only=False)).status_code, 200)
+        self.repo.save_recommendation.assert_not_called()
+
+    def test_lookup_failure_does_not_generate_and_lock_is_released(self):
+        self.repo.recommendation_for_month.side_effect = RuntimeError("private SQL credentials")
+        with patch("recommendation.api.RecommendationAgent") as agent:
+            response = self.post(dict(self.body, metrics_only=False))
+            self.assertEqual(response.status_code, 503)
+            self.assertNotIn("private", response.text)
+            agent.assert_not_called()
+        self.assertEqual(self.post().status_code, 200)
+
+    def test_save_failure_is_reported_and_releases_lock(self):
+        for error, status in ((ValueError("no warning"), 409),
+                              (RuntimeError("private SQL credentials"), 503)):
+            with self.subTest(status=status), patch("recommendation.api.RecommendationAgent") as agent, patch("recommendation.api.OllamaClient"):
+                agent.return_value.run.return_value = {
+                    "status": "generated", "recommendation": {"summary": "Stable trend", "actions": []}}
+                self.repo.save_recommendation.side_effect = error
+                response = self.post(dict(self.body, metrics_only=False))
+                self.assertEqual(response.status_code, status)
+                self.assertNotIn("private", response.text)
+                self.assertEqual(self.post().status_code, 200)
+
+    def test_insufficient_data_does_not_overwrite_saved_recommendation(self):
+        with patch("recommendation.api.RecommendationAgent") as agent, patch("recommendation.api.OllamaClient"):
+            agent.return_value.run.return_value = {"status": "insufficient_data", "evidence": {}}
+            self.assertEqual(self.post(dict(self.body, metrics_only=False)).status_code, 200)
+        self.repo.save_recommendation.assert_not_called()
 
     def test_missing_token_rejected_before_database(self):
         result = self.client.post("/api/recommendations", json=self.body)
@@ -110,6 +202,7 @@ class ApiTests(unittest.TestCase):
         self.access.authorize.side_effect = HTTPException(403, "Not assigned")
         self.assertEqual(self.post().status_code, 403)
         self.repo.load.assert_not_called()
+        self.repo.save_recommendation.assert_not_called()
 
     def test_invalid_input(self):
         invalid = [dict(self.body, msme_id=0), dict(self.body, msme_id="1"),
@@ -130,6 +223,7 @@ class ApiTests(unittest.TestCase):
             result = self.post(dict(self.body, metrics_only=False))
             self.assertEqual(result.status_code, 502)
             self.assertNotIn("private", result.text)
+            self.repo.save_recommendation.assert_not_called()
         self.assertEqual(self.post().status_code, 200)
 
     def test_busy_returns_retry_after(self):
