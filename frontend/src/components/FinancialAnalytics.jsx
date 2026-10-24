@@ -14,6 +14,7 @@ export default function FinancialAnalytics({ business, user }) {
   const [revision, setRevision] = useState(0);
   const [windowSize, setWindowSize] = useState(12);
   const [historyPage, setHistoryPage] = useState(0);
+  const [view, setView] = useState("trends");
   const active = business.isActive === "Y" || ["RM", "RISK_ADMIN"].includes(user.role);
   const resource = useWorkflowResource(active && period.month ? dashboardReportPath(business.msmeId, period.month) : null, user.accessToken, revision);
   const report = resource.data;
@@ -29,11 +30,11 @@ export default function FinancialAnalytics({ business, user }) {
   const seasonalRows = Array.from({ length: 12 }, (_, index) => ({ month: `2000-${String(index + 1).padStart(2, "0")}-01`, label: new Date(2000, index, 1).toLocaleDateString("en-IN", { month: "short" }), index: index + 1 }));
   const snapshotValue = (row, field) => row.available === false ? null : finiteValue(row.snapshot?.[field]);
 
-  return <div className="workflow-stack">
-    <section className="panel"><div className="panel-heading"><div><h2><BarChart3 size={19} /> Financial analytics</h2><p>Dashboard service · calculated metrics and up to 48 months of financial history</p></div><button className="button secondary" disabled={resource.loading || period.resource.loading} onClick={() => { period.reload(); setRevision(v => v + 1); }}><RefreshCw size={15} />Refresh analytics</button></div>
+  return <div className="workflow-stack financial-analytics">
+    <section className="panel analytics-controls"><div className="panel-heading"><div><h2><BarChart3 size={19} /> Financial analytics</h2><p>Financial trends and calculated metrics</p></div><button className="button secondary" disabled={resource.loading || period.resource.loading} onClick={() => { period.reload(); setRevision(v => v + 1); }}><RefreshCw size={15} />Refresh analytics</button></div>
       <div className="workflow-inset"><div className="insights-filters"><div className="snapshot-field"><label htmlFor="analytics-month">Reporting month</label><select id="analytics-month" value={period.month} onChange={e => { period.setMonth(e.target.value); setHistoryPage(0); }} disabled={!active || period.resource.loading || !period.months.length}>{!period.months.length && <option value="">No completed months available</option>}{period.months.map(month => <option key={month} value={month}>{monthLabel(month)}</option>)}</select></div>
         <div className="snapshot-field"><label htmlFor="analytics-window">History window</label><select id="analytics-window" value={windowSize} onChange={e => { setWindowSize(Number(e.target.value)); setHistoryPage(0); }}>{[12, 24, 48].map(size => <option key={size} value={size}>{size} months</option>)}</select></div></div>
-        <p className="management-help">Choose a completed reporting month with submitted data. Amounts retain their database units; missing observations are not treated as zero.</p>
+        <p className="management-help">Completed reporting months · Original amount units · Missing data stays unavailable.</p>
         {!active && <div className="notice error" role="alert">Financial analytics is available for active businesses only.</div>}
         {period.resource.error && <div className="notice error" role="alert">{period.resource.error}</div>}
       </div>
@@ -48,17 +49,24 @@ export default function FinancialAnalytics({ business, user }) {
         ["Overdue receivables", metricValue(currentMetric("liquidity_metrics", "overdue_ratio_pct")), "Share of total receivables"],
         ["Credit utilisation", metricValue(currentMetric("liquidity_metrics", "credit_utilisation_pct")), "Uses the current sanctioned limit"],
       ].map(([label, value, note]) => <article className="stat-card insight-stat" key={label}><div className="stat-top">{label}</div><strong>{value}</strong><p>{note}</p></article>)}</div>
-      <div className="insights-chart-grid">
+      <nav className="analytics-views" aria-label="Financial analytics sections">
+        {[["trends", "Financial trends"], ["comparison", "Year comparison"], ["risk", "Saved risk & assessment"], ["evidence", "Metric evidence"], ["history", "Monthly data"]].map(([id, label]) => <button key={id} type="button" aria-pressed={view === id} aria-controls="analytics-view" onClick={() => setView(id)}>{label}</button>)}
+      </nav>
+      <div id="analytics-view" className="analytics-view" role="region" aria-label={{ trends: "Financial trends", comparison: "Year comparison", risk: "Saved risk and assessment", evidence: "Metric evidence", history: "Monthly data" }[view]}>
+      {view === "trends" && <div className="insights-chart-grid">
         <InsightLineChart title="Revenue history" description="Submitted revenue; gaps remain visible." rows={windowRows} lines={[{ label: "Revenue", get: row => snapshotValue(row, "revenue") }]} />
         <InsightLineChart title="Receivables & collections" description="Overdue receivables are a subset of total receivables." rows={windowRows} lines={[{ label: "Total receivables", get: row => snapshotValue(row, "total_receivables") }, { label: "Overdue receivables", get: row => snapshotValue(row, "overdue_receivables") }]} />
         <InsightLineChart title="Credit usage" description="The dashed reference is the current limit, not historical limits." rows={windowRows} lines={[{ label: "Credit used", get: row => snapshotValue(row, "credit_used") }, { label: "Current limit", dashed: true, get: () => finiteValue(report.credit_limit) }]} />
         <InsightLineChart title="Liquidity ratios" description="Calculated values supplied by the dashboard service." rows={windowRows} unit="%" lines={[{ label: "Overdue ratio", get: row => metricNumber(row.metrics?.["liquidity_metrics.overdue_ratio_pct"]) }, { label: "Credit utilisation", get: row => metricNumber(row.metrics?.["liquidity_metrics.credit_utilisation_pct"]) }]} />
-      </div>
-      <InsightLineChart title="Same-calendar-month revenue comparison" description="Exploratory year overlays. Differences do not establish seasonality or its cause." rows={seasonalRows} lines={years.map(year => ({ label: year, get: row => finiteValue(series.find(item => item.month.startsWith(`${year}-${String(row.index).padStart(2, "0")}`))?.snapshot?.revenue) }))} />
+      </div>}
+      {view === "comparison" && <InsightLineChart title="Same-calendar-month revenue comparison" description="Exploratory year overlays. Differences do not establish seasonality or its cause." rows={seasonalRows} lines={years.map(year => ({ label: year, get: row => finiteValue(series.find(item => item.month.startsWith(`${year}-${String(row.index).padStart(2, "0")}`))?.snapshot?.revenue) }))} />}
+      {view === "risk" && <>
       <SavedBreachMatrix report={report} />
       <section className="panel"><div className="panel-heading"><div><h2>Saved assessment context</h2><p>Historical classification for this reporting month; analytics does not create a new risk score.</p></div>{saved && <WorkflowStatus value={saved.severity} />}</div><div className="workflow-inset">{saved ? <p className="management-help">Assessment #{saved.assessment_id} · Threshold #{saved.threshold_config_id} · Revenue decline {amountLabel(saved.revenue_decline_pct)}% · Overdue {amountLabel(saved.overdue_receivable_pct)}% · Credit {amountLabel(saved.credit_utilisation_pct)}%</p> : <p className="management-help">No saved assessment is available for this reporting month. No default thresholds are assumed.</p>}</div></section>
-      <EvidenceExplorer key={period.month} evidence={evidence} series={windowRows} />
-      <section className="panel"><div className="panel-heading"><div><h2>Monthly observations</h2><p>Latest first · 5 per page · selected {windowSize}-month window</p></div></div><div className="table-scroll"><table><thead><tr><th>Month</th><th>Revenue</th><th>Total receivables</th><th>Overdue</th><th>Credit used</th><th>Availability</th></tr></thead><tbody>{monthlyRows.slice(page * 5, page * 5 + 5).map(row => <tr key={row.month}><td>{monthLabel(row.month)}</td><td>{amountLabel(row.snapshot?.revenue)}</td><td>{amountLabel(row.snapshot?.total_receivables)}</td><td>{amountLabel(row.snapshot?.overdue_receivables)}</td><td>{amountLabel(row.snapshot?.credit_used)}</td><td>{row.available ? "Available" : "Unavailable"}</td></tr>)}</tbody></table></div><WorkflowPagination page={page} onPage={setHistoryPage} loading={false} count={monthlyRows.length} hasNext={(page + 1) * 5 < monthlyRows.length} /></section>
+      </>}
+      {view === "evidence" && <EvidenceExplorer key={period.month} evidence={evidence} series={windowRows} />}
+      {view === "history" && <section className="panel"><div className="panel-heading"><div><h2>Monthly observations</h2><p>Latest first · 5 per page · selected {windowSize}-month window</p></div></div><div className="table-scroll"><table><thead><tr><th>Month</th><th>Revenue</th><th>Total receivables</th><th>Overdue</th><th>Credit used</th><th>Availability</th></tr></thead><tbody>{monthlyRows.slice(page * 5, page * 5 + 5).map(row => <tr key={row.month}><td>{monthLabel(row.month)}</td><td>{amountLabel(row.snapshot?.revenue)}</td><td>{amountLabel(row.snapshot?.total_receivables)}</td><td>{amountLabel(row.snapshot?.overdue_receivables)}</td><td>{amountLabel(row.snapshot?.credit_used)}</td><td>{row.available ? "Available" : "Unavailable"}</td></tr>)}</tbody></table></div><WorkflowPagination page={page} onPage={setHistoryPage} loading={false} count={monthlyRows.length} hasNext={(page + 1) * 5 < monthlyRows.length} /></section>}
+      </div>
     </>}</ResourceState>}
   </div>;
 }

@@ -1027,7 +1027,7 @@ function DashboardWorkspace({ initialNotification }) {
           </div>
         </header>
 
-        <main className="dashboard-main">
+        <main className={`dashboard-main${tab === "analytics" ? " analytics-page" : ""}`}>
           <div className="page-heading">
             <div>
               <p className="eyebrow teal">
