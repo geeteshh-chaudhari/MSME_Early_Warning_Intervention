@@ -588,6 +588,58 @@ select option { color: #29493b; background: #fff; font-size: 14px; }
 .insights-trace { padding: 20px 23px; color: #7d9687; font-size: 11px; line-height: 1.9; }
 .insights-trace summary { cursor: pointer; color: #547b64; }
 .insights-trace ol { margin-bottom: 0; }
+/* Compact layout is limited to Financial Analytics. */
+.analytics-page { padding-top: 20px; }
+.analytics-page .page-heading { margin-bottom: 14px; }
+.analytics-page .page-heading .eyebrow { margin-bottom: 5px; }
+.analytics-page .page-heading h1 { font-size: 26px; margin-bottom: 4px; }
+.analytics-page .business-context { margin: 14px 0; }
+.analytics-page .business-switcher { display: flex; align-items: center; gap: 12px; }
+.analytics-page .business-switcher > label { flex-shrink: 0; margin: 0; }
+.analytics-page .business-select { min-height: 44px; }
+.analytics-page .business-select select { padding-block: 10px; }
+.financial-analytics .panel { margin-bottom: 16px; }
+.financial-analytics .panel-heading { padding: 14px 18px; }
+.financial-analytics .panel-heading h2 { display: flex; align-items: center; gap: 8px; font-size: 15px; }
+.financial-analytics .panel-heading p { color: #526d60; font-size: 12px; line-height: 1.5; margin-top: 4px; }
+.financial-analytics .workflow-inset { padding: 0 18px 14px; }
+.financial-analytics .management-help { font-size: 12px; color: #526d60; line-height: 1.6; }
+.financial-analytics .insights-filters { gap: 14px; }
+.financial-analytics .insights-filters .snapshot-field { max-width: 300px; }
+.financial-analytics .insights-filters label { font-size: 12px; }
+.financial-analytics .insights-filters select { min-height: 44px; padding-block: 10px; }
+.financial-analytics .insights-report-meta { padding-bottom: 12px; gap: 8px 20px; font-size: 12px; color: #526d60; }
+.financial-analytics .stats-grid { gap: 14px; margin-bottom: 16px; }
+.financial-analytics .stat-card { padding: 14px 16px; }
+.financial-analytics .stat-top { font-size: 12px; color: #526d60; }
+.financial-analytics .stat-card > strong { font-size: 25px; margin: 8px 0 5px; }
+.financial-analytics .stat-card > p { font-size: 12px; line-height: 1.5; color: #526d60; }
+.analytics-views { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; margin-bottom: 16px; background: #eaf1ed; border: 1px solid #d8e4dd; border-radius: 10px; }
+.analytics-views button { flex: 1 1 auto; min-height: 44px; border: 1px solid transparent; border-radius: 7px; padding: 10px 12px; background: transparent; font-size: 13px; font-weight: 650; color: #426252; }
+.analytics-views button:hover { background: #f7faf8; }
+.analytics-views button[aria-pressed="true"] { background: #fff; color: #176347; border-color: #adcbbc; box-shadow: 0 1px 3px #173d2c0d; }
+.financial-analytics :is(button, select):focus-visible { outline: 2px solid #087f75; outline-offset: 2px; }
+.analytics-view { min-width: 0; }
+.financial-analytics .insights-chart-grid { gap: 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.financial-analytics .insights-chart-grid > .panel { margin: 0; }
+.financial-analytics .insight-chart-legend { font-size: 12px; color: #526d60; padding-inline: 18px; gap: 8px 14px; }
+.financial-analytics .insight-chart-legend small { font-size: 11px; color: #526d60; }
+.financial-analytics .insight-axis { fill: #526d60; font-size: 16px; }
+.financial-analytics .insight-svg-wrap { max-width: 900px; margin-inline: auto; }
+.financial-analytics th, .financial-analytics td { font-size: 12px; }
+@media (max-width: 800px) {
+  .financial-analytics .insights-chart-grid { grid-template-columns: minmax(0, 1fr); }
+  .analytics-page .business-switcher { display: block; }
+  .analytics-page .business-switcher > label { margin-bottom: 6px; }
+}
+@media (max-width: 700px) {
+  .financial-analytics .analytics-controls .panel-heading { flex-wrap: wrap; }
+  .financial-analytics .insights-filters .snapshot-field { min-width: 0; flex-basis: 100%; max-width: none; }
+  .financial-analytics .stat-card { padding: 12px; }
+  .financial-analytics .stat-card > strong { font-size: 23px; }
+  .analytics-views button { flex-basis: calc(50% - 6px); }
+  .financial-analytics .insight-axis { font-size: 18px; }
+}
 @media (max-width: 1050px) {
   .insights-chart-grid { grid-template-columns: 1fr; }
 }
