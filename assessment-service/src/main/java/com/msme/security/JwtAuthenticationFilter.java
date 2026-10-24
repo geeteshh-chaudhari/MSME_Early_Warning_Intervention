@@ -39,7 +39,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             FilterChain filterChain)
             throws ServletException, IOException {
 
-        String authorization = request.getHeader("Authorization");
+        if (!BrowserAuthentication.csrfValid(request)) {
+            response.sendError(403, "CSRF verification failed");
+            return;
+        }
+        String authorization = BrowserAuthentication.authorization(request);
 
         if (authorization == null
                 || !authorization.startsWith("Bearer ")) {

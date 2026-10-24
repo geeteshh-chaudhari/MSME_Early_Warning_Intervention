@@ -88,6 +88,7 @@ public class SecurityConfig {
              * Endpoint authorization rules.
              */
             .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/internal/warnings/**").permitAll()
                 .requestMatchers("/v3/api-docs", "/v3/api-docs/**").permitAll()
                 .requestMatchers(
                     

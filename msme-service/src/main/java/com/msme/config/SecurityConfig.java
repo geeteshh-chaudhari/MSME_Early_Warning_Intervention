@@ -65,8 +65,8 @@ public class SecurityConfig {
 
         http
             /*
-             * REST API + JWT:
-             * no browser session and no server-side CSRF token required.
+             * Stateless JWT API. BrowserAuthentication validates CSRF for cookie writes;
+             * the gateway also verifies CSRF before forwarding cookie authentication.
              */
             .csrf(csrf -> csrf.disable())
 
@@ -91,6 +91,7 @@ public class SecurityConfig {
                 .requestMatchers("/v3/api-docs", "/v3/api-docs/**").permitAll()
                 .requestMatchers(
                     "/api/auth/login",
+                    "/api/auth/logout",
                     "/actuator/health",
                     "/error"
                 ).permitAll()

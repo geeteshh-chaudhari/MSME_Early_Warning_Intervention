@@ -9,6 +9,7 @@ from urllib.request import Request, ProxyHandler, build_opener
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.staticfiles import StaticFiles
@@ -56,9 +57,10 @@ def create_app(settings=None, verifier=None, access=None, repository=None, disco
     async def lifespan(app):
         # Load local overrides first, then shared Settings.load uses recommendation .env.
         load_dotenv(ROOT / ".env", override=False)
+        load_dotenv(ROOT.parent / ".env", override=False)
         app.state.settings = settings or Settings.load()
         app.state.verifier = verifier or TokenVerifier.from_environment()
-        app.state.access = access or OracleAccess(app.state.settings, os.getenv("ORACLE_USER_SCHEMA", "").strip())
+        app.state.access = access or OracleAccess(app.state.settings, os.getenv("ORACLE_USER_SCHEMA", "").strip(), allow_representatives=True, allow_inactive_reads=True)
         app.state.repository = repository or OracleRepository(app.state.settings)
         client = None
         if discovery:
@@ -103,6 +105,10 @@ def create_app(settings=None, verifier=None, access=None, repository=None, disco
     @app.get("/", include_in_schema=False)
     def index():
         return FileResponse(STATIC / "index.html")
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(request, exc):
+        return JSONResponse(status_code=400, content={"detail": "Invalid or missing request value."})
 
     @app.get("/health", include_in_schema=False)
     def health():
@@ -180,13 +186,13 @@ def create_app(settings=None, verifier=None, access=None, repository=None, disco
                                                    'properties': {'detail': {'type': 'string'}}}}}}})
     def report(msme_id: int, as_of: str = Query(pattern=r"^\d{4}-\d{2}$"), identity=Depends(authenticate)):
         if msme_id <= 0:
-            raise HTTPException(422, "MSME ID must be positive.")
+            raise HTTPException(400, "MSME ID must be positive.")
         try:
             period = date.fromisoformat(as_of + "-01")
             if period >= date.today().replace(day=1):
                 raise ValueError()
         except ValueError:
-            raise HTTPException(422, "Choose a valid completed reporting month, YYYY-MM.") from None
+            raise HTTPException(400, "Choose a valid completed reporting month, YYYY-MM.") from None
         try:
             app.state.access.authorize(*identity, msme_id)
             data = app.state.repository.load(msme_id, period)
@@ -200,7 +206,7 @@ def create_app(settings=None, verifier=None, access=None, repository=None, disco
         except LookupError:
             raise HTTPException(404, "No snapshot exists for the selected reporting month.") from None
         except (ValueError, ArithmeticError):
-            raise HTTPException(422, "Financial records cannot be analysed. Check duplicate months, saved indicators and financial values.") from None
+            raise HTTPException(400, "Financial records cannot be analysed. Check duplicate months, saved indicators and financial values.") from None
 
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
     return app

@@ -12,11 +12,13 @@ import com.msme.repository.AppUserRepository;
 public class CustomUserDetailsService implements UserDetailsService {
 
     private final AppUserRepository appUserRepository;
+    private final com.msme.repository.MsmeRepository msmes;
 
     public CustomUserDetailsService(
-            AppUserRepository appUserRepository) {
+            AppUserRepository appUserRepository, com.msme.repository.MsmeRepository msmes) {
 
         this.appUserRepository = appUserRepository;
+        this.msmes = msmes;
     }
 
     @Override
@@ -30,6 +32,9 @@ public class CustomUserDetailsService implements UserDetailsService {
                     )
                 );
 
+        if ("MSME_REP".equals(user.getRole()) && (user.getMsmeId() == null
+                || msmes.findById(user.getMsmeId()).filter(m -> "Y".equals(m.getIsActive())).isEmpty()))
+            throw new UsernameNotFoundException("Business account is inactive");
         return new CustomUserPrincipal(user);
     }
 
@@ -43,6 +48,9 @@ public class CustomUserDetailsService implements UserDetailsService {
                     )
                 );
 
+        if ("MSME_REP".equals(user.getRole()) && (user.getMsmeId() == null
+                || msmes.findById(user.getMsmeId()).filter(m -> "Y".equals(m.getIsActive())).isEmpty()))
+            throw new UsernameNotFoundException("Business account is inactive");
         return new CustomUserPrincipal(user);
     }
 }

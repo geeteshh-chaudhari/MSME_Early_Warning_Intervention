@@ -119,3 +119,19 @@ At user request, the prose number parser now recognizes leading-dot decimals suc
 ## Reporting years and month/year durations in prose 21 October 2026
 
 At user request, reporting years 1900–2199, ISO dates, numeric month/year dates and integer month/year durations are recognized separately and exempted from financial numeric comparison. September 2026, 2026-09 and last 12 months no longer require matching financial values. Financial suffixes such as 2026% remain checked. Main/repair prompts now permit reporting periods and windows grounded in supplied context. This does not validate temporal factual accuracy or authorize arbitrary financial numbers. Signed full evidence, magnitude equality, ignored signs, leading-dot parsing, JSON fields and model options are unchanged. All 72 isolated tests passed, and the exact pasted response from attachment 825e8e7d-21ee-4c39-a187-493c00f65a53 passed against its reported tool values without an Ollama call. No live Oracle/Ollama request was made. Earlier blanket date/year prose restrictions are superseded. Restart the recommendation API to load the changes.
+
+## 23 October 2026 ? manual assessment / recommendation wiring
+
+Implemented manual RM assessment-to-warning dispatch, new-warning-only recommendation attempts, exact warning selection/save-if-empty, root environment loading and dashboard launcher repair. Reporting-period Python evidence selection corrected. Existing UI layout retained. Verification pending: the user will start services separately and perform runtime testing. Closure-policy clarification remains separate; current closure behavior was preserved. No database changes or live tests performed.
+
+Recommendation Windows launcher: added start-api.cmd matching dashboard startup behavior, with root .venv fallback and visible errors. Service launch not performed.
+
+## 23 October 2026 - completed agreed workflow changes
+
+Completed representative visibility/privacy, Admin recommendation retry, unavailable marker, consistent RM closure, reporting-period chronology/backfill link repair/green flag, immediate versioned thresholds, global in-memory notification view/navigation/refresh, inactive-business checks, cookie session restoration/CSRF, and consistent error handling. Restored previously agreed completed-month/zero-value rules found missing during isolated checks. SQL, credentials and legacy multiple-intervention records left to the user. Checks passed: 157 selected Java tests, 91 recommendation tests, 21 dashboard tests; frontend production build and lint. Pending user work: restart services individually and test live Oracle/Ollama integration; neither dependency was contacted by these checks.
+
+Recommendation 502 diagnostics completed: distinguish validation from model-runtime failures in the API/UI, and label raw/validated output in the terminal. 93 mocked recommendation tests and the changed frontend module lint passed. Actual failed request cause awaits the user retry/validation feedback; no Oracle/Ollama calls made.
+
+## 23 October 2026 - restored agent integration only
+
+User restored Recommendation-service from main and prohibited agent changes. Restored the missing authenticated internal endpoint, exact warning read/generate/save-once behavior, root environment loading and dashboard access-call compatibility around the restored generator. warning_store.py isolates persistence from the financial reader. No edits to agent.py, prompts, metrics.py, numeric_prose.py or database.py; hashes preserved. 86 recommendation tests and 21 dashboard tests passed with mocks/local fixtures, including concurrent generation and closure races. No Oracle/Ollama calls or schema/credential changes. Restart the recommendation API; live integration remains for the user.

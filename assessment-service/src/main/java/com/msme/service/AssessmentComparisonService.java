@@ -47,10 +47,10 @@ public class AssessmentComparisonService {
                     "Assessments must belong to the same MSME");
         }
 
-        if (!before.assessmentDate()
-                .isBefore(after.assessmentDate())) {
+        if (before.reportingPeriod() == null || after.reportingPeriod() == null
+                || !before.reportingPeriod().isBefore(after.reportingPeriod())) {
             throw new InvalidRequestException(
-                    "Before assessment must be earlier "
+                    "Before reporting period must be earlier "
                     + "than after assessment");
         }
 
@@ -80,12 +80,12 @@ public class AssessmentComparisonService {
                         + "three indicator results");
             }
 
-            BigDecimal change = newValue.calculatedValue()
-                    .subtract(oldValue.calculatedValue());
+            BigDecimal change = newValue.calculatedValue() == null || oldValue.calculatedValue() == null
+                    ? null : newValue.calculatedValue().subtract(oldValue.calculatedValue());
 
             // All three indicators represent risk percentages.
             // A lower value means an improvement.
-            boolean improved = change.signum() < 0;
+            boolean improved = change == null ? oldValue.breached() && !newValue.breached() : change.signum() < 0;
 
             if (improved) {
                 anyImproved = true;

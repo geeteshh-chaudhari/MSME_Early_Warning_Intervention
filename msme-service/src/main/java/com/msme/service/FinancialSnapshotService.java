@@ -648,6 +648,10 @@ public class FinancialSnapshotService {
             );
         }
 
+        if (!reportingPeriod.isBefore(LocalDate.now(java.time.ZoneId.of("Asia/Kolkata")).withDayOfMonth(1))) {
+            throw new InvalidRequestException("Choose a completed reporting month before the current month");
+        }
+
         if (reportingPeriod.getDayOfMonth() != 1) {
             throw new InvalidRequestException(
                 "Reporting period must be the first "

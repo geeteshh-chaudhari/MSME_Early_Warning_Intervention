@@ -3,14 +3,14 @@
 Python command-line agent for Oracle Database 26ai and local Ollama `qwen3:1.7b`.
 Python runs all five allowlisted tools; the model interprets their results in an
 advisory interpretation with evidence IDs. Python performs every calculation.
-The CLI reads Oracle. The authenticated API also saves generated JSON in
-`WARNING.RECOMMENDED_ACTION` before returning success.
+The restored agent and CLI remain unchanged and read-only. The HTTP warning adapter
+saves successful response JSON in the existing WARNING.RECOMMENDED_ACTION CLOB.
 
 ## Authenticated REST API and Eureka
 
 The CLI remains available. The API runs on **8085**, registers as
 `recommendation-service` with Eureka on **8080**. Call the API directly on port
-**8085**; the recommendation gateway route has been removed.
+**8085**, or use the existing gateway route from the frontend.
 
 Install `requirements.txt`, then add the entries in `api.env.example` to your
 existing service `.env`. Preserve your Oracle credentials. `JWT_SECRET` must be
@@ -22,24 +22,6 @@ The Oracle account also needs SELECT access to `APP_USER` and `MSME` for current
 account status and assignments; password hashes are never selected. Set
 `ORACLE_USER_SCHEMA` if APP_USER belongs to another owner. Existing profile and
 assessment schema settings still apply.
-
-For generation, the Oracle account needs SELECT access to `WARNING` and UPDATE
-access to its `RECOMMENDED_ACTION` CLOB column. Set `ORACLE_WARNING_SCHEMA` when
-the warning table belongs to another owner; blank uses current-schema tables or
-private synonyms. No new column or table is required. The existing column is
-named `recommended_action`, not `recommendation_action`.
-
-Each successful generation saves the complete response JSON (recommendation,
-evidence and metadata) on the latest assessment's warning for the exact MSME and
-reporting month. Each request first checks that warning: saved recommendations
-are returned without calling Ollama or overwriting the column. Older recommendation-only
-JSON and historical plain-text advice are also displayed. Empty values and pending,
-unavailable or malformed JSON trigger generation. Missing warnings, or closed warnings
-without saved advice, return 409 before calling the model. Closed warnings with saved
-advice remain readable. The API does not create warnings or change their decisions.
-Responses identify `recommendation_source` as `saved` or `generated` and include `warning_id`.
-Evidence-only and insufficient-data responses do not overwrite recommendations.
-Database failures return 503 instead of reporting a successful save.
 
 Start RegistryServer and Ollama, then the API:
 
@@ -62,6 +44,7 @@ Content-Type: application/json
 
 ```json
 {
+  "warning_id": 1111,
   "msme_id": 1,
   "as_of": "2026-09",
   "metrics_only": false,
@@ -100,8 +83,7 @@ Default addresses assume all services run on the same machine.
 Responses: 401 missing/invalid/expired token or inactive/changed-role user;
 403 disallowed role, assignment or inactive MSME; 404 missing accessible MSME or
 requested snapshot; 422 invalid request; 429 busy; 502 model/metric validation
-failure; 409 no matching open warning; 503 database/dependency or save failure.
-Financial snapshots are not changed.
+failure; 503 database/dependency failure. No financial records are written.
 
 For isolated tests without live Oracle/Ollama:
 
@@ -126,7 +108,7 @@ regardless of shell working directory; existing environment variables take prior
 `localhost:1521/FREEPDB1` if that is your actual database service. The default
 python-oracledb Thin connection needs no Oracle Instant Client for this setup.
 
-For CLI reads, use an account with SELECT access to:
+Use a read-only account with SELECT access to:
 
 - Profile owner: `MSME`, `FINANCIAL_SNAPSHOT`.
 - Assessment owner: `RISK_ASSESSMENT`, `THRESHOLD_CONFIG`, `ASSESSMENT_INDICATOR_RESULT`.
@@ -374,3 +356,40 @@ such as 2026%, remain checked. Date/window factual accuracy is left to the LLM
 and supplied context; this is recognition, not metadata verification. The prompt
 and repair instructions now permit these references. Exact financial magnitude
 matching, ignored signs, response structure and full tool evidence remain unchanged.
+
+## Warning integration around the restored agent - 23 October 2026
+
+The agent, prompt, metrics, numeric validation and financial evidence SELECTs are
+preserved byte-for-byte from the user's restored versions. No model settings,
+repair logic, tool input or agent output rules were changed by this integration.
+
+A newly committed Java warning sends warning_id, msme_id and the snapshot's
+reporting month (as_of, YYYY-MM) to POST /internal/recommendations. This endpoint
+requires X-Internal-Token matching INTERNAL_SERVICE_TOKEN from the private .env.
+The existing Java after-commit listener makes one initial attempt; old warnings
+are not scanned for generation.
+
+Public POST /api/recommendations permits the assigned RM and Risk Admin. For
+recommendations, supply warning_id as shown above. The adapter checks the exact
+warning/business/month and reads RECOMMENDED_ACTION first. Existing success JSON
+is returned without loading financial history or calling the agent. If missing
+or exactly `reccommendation service not available`, it invokes the restored agent
+unchanged. A generated result is saved as complete JSON, including its evidence,
+using a conditional CLOB update. Populated successes and closed warnings are never
+overwritten. A closed warning's saved result remains readable; missing results
+may only be generated while the case is open. Concurrent requests recheck saved
+state after waiting, so a successful result is generated once in the configured
+single API worker. Failures retain the unavailable marker and remain retryable.
+metrics_only keeps the existing evidence/tool path without writes.
+
+warning_store.py contains the persistence adapter; database.py remains the
+restored financial reader. The account needs SELECT on the warning/assessment/
+snapshot tables and UPDATE on WARNING.RECOMMENDED_ACTION. ORACLE_WARNING_SCHEMA
+optionally selects the warning owner. No schema or credential changes were made.
+Service-local .env values override repository-root defaults; existing shell
+variables take precedence. Restart the recommendation API to load these changes.
+The dashboard's existing optional access-policy parameters remain compatible.
+
+Verification: 86 isolated recommendation tests and 21 dashboard tests passed
+using mocks/local fixtures. No Oracle or Ollama requests were made. Protected
+agent/prompt/calculation/validation/evidence-reader file hashes were checked.

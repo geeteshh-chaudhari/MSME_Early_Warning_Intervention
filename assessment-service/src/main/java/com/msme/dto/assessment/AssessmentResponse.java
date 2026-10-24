@@ -25,9 +25,19 @@ public record AssessmentResponse(
 
         Long previousAssessmentId,
 
-        List<IndicatorResultResponse> indicators
+        List<IndicatorResultResponse> indicators,
+
+        java.time.LocalDate reportingPeriod
 
 ) {
+
+    // Existing callers can construct saved-result fixtures without a reporting month.
+    public AssessmentResponse(Long assessmentId, Long msmeId, Long snapshotId, Long thresholdConfigId,
+            LocalDateTime assessmentDate, Severity severity, StressPattern stressPattern,
+            Long previousAssessmentId, List<IndicatorResultResponse> indicators) {
+        this(assessmentId, msmeId, snapshotId, thresholdConfigId, assessmentDate, severity,
+                stressPattern, previousAssessmentId, indicators, null);
+    }
 
     public AssessmentResponse {
         if (indicators != null) {

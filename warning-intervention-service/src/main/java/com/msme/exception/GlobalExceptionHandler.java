@@ -27,7 +27,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({org.springframework.http.converter.HttpMessageNotReadableException.class,
             org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class,
-            org.springframework.web.bind.MissingServletRequestParameterException.class})
+            org.springframework.web.bind.MissingServletRequestParameterException.class,
+            jakarta.validation.ConstraintViolationException.class,
+            org.springframework.web.method.annotation.HandlerMethodValidationException.class})
     public ResponseEntity<ErrorResponse> handleMalformedRequest(Exception ex, HttpServletRequest request) {
         return ResponseEntity.badRequest().body(new ErrorResponse(LocalDateTime.now(), 400,
                 "Bad Request", "Invalid or missing request value", request.getRequestURI()));

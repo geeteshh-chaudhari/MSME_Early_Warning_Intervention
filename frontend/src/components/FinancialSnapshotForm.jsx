@@ -30,6 +30,10 @@ export default function FinancialSnapshotForm({
   onSaved,
 }) {
   const [values, setValues] = useState(initialValues);
+  const [reportYear, setReportYear] = useState(String(new Date().getFullYear()));
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const submitted = new Set(existingSnapshots.map(snapshot => String(snapshot.reportingPeriod).slice(0, 7)));
   const [errors, setErrors] = useState({});
   const [reviewing, setReviewing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -63,6 +67,8 @@ export default function FinancialSnapshotForm({
     if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(values.reportingMonth)) {
       nextErrors.reportingMonth = "Select a reporting month.";
     }
+
+    if (values.reportingMonth >= currentMonth) nextErrors.reportingMonth = "Choose a completed month before the current month.";
 
     for (const [name] of fields) {
       const value = values[name].trim();
@@ -274,20 +280,18 @@ export default function FinancialSnapshotForm({
                     Reporting month
                   </label>
 
-                  <input
-                    id="reportingMonth"
-                    name="reportingMonth"
-                    type="month"
-                    value={values.reportingMonth}
-                    onChange={updateField}
-                    aria-invalid={!!errors.reportingMonth}
-                    aria-describedby={
-                      errors.reportingMonth
-                        ? "reportingMonth-error"
-                        : undefined
-                    }
-                    required
-                  />
+                  <input aria-label="Reporting year" type="number" min="1" max={now.getFullYear()} value={reportYear}
+                    onChange={event => { setReportYear(event.target.value); setValues(previous => ({ ...previous, reportingMonth: "" })); }} required />
+                  <select id="reportingMonth" name="reportingMonth" value={values.reportingMonth} onChange={updateField}
+                    aria-invalid={!!errors.reportingMonth} required>
+                    <option value="">Choose a completed, unsubmitted month</option>
+                    {Array.from({ length: 12 }, (_, index) => {
+                      const month = `${String(reportYear).padStart(4, "0")}-${String(index + 1).padStart(2, "0")}`;
+                      return <option key={month} value={month} disabled={!reportYear || month >= currentMonth || submitted.has(month)}>
+                        {month}{submitted.has(month) ? " (submitted)" : month >= currentMonth ? " (not completed)" : ""}
+                      </option>;
+                    })}
+                  </select>
 
                   {errors.reportingMonth && (
                     <small

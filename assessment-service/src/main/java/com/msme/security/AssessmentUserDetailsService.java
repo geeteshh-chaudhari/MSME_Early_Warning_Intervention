@@ -84,6 +84,13 @@ public class AssessmentUserDetailsService
             );
         }
 
+        if ("MSME_REP".equals(principal.getRole())) {
+            String owner = userTable.contains(".") ? userTable.substring(0, userTable.lastIndexOf('.') + 1) : "";
+            Integer active = principal.getMsmeId() == null ? 0 : jdbc.queryForObject(
+                    "SELECT COUNT(*) FROM " + owner + "MSME WHERE MSME_ID=:id AND IS_ACTIVE='Y'",
+                    new MapSqlParameterSource("id", principal.getMsmeId()), Integer.class);
+            if (active == null || active != 1) throw new UsernameNotFoundException("Business account is inactive");
+        }
         return principal;
     }
 

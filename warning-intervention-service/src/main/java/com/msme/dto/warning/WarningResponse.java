@@ -21,6 +21,7 @@ public class WarningResponse {
     private String whyNowText;
 
     
+    @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
     private String recommendedAction;
 
     

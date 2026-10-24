@@ -19,6 +19,7 @@ import com.msme.dto.user.UpdateMsmeRepRequest;
 import com.msme.entity.AppUser;
 import com.msme.entity.Msme;
 import com.msme.exception.DuplicateResourceException;
+import com.msme.exception.InvalidRequestException;
 import com.msme.exception.ForbiddenOperationException;
 import com.msme.exception.ResourceNotFoundException;
 import com.msme.repository.AppUserRepository;
@@ -282,6 +283,10 @@ public class AppUserService {
             throw new DuplicateResourceException(
                 "This MSME already has a representative"
             );
+        }
+
+        if (!"Y".equals(msme.getIsActive())) {
+            throw new InvalidRequestException("Cannot add a representative to an inactive MSME");
         }
 
         String normalizedEmail = request.getEmail().trim();

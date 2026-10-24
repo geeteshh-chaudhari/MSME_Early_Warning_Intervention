@@ -14,7 +14,7 @@ export default function FinancialAnalytics({ business, user }) {
   const [revision, setRevision] = useState(0);
   const [windowSize, setWindowSize] = useState(12);
   const [historyPage, setHistoryPage] = useState(0);
-  const active = business.isActive === "Y";
+  const active = business.isActive === "Y" || ["RM", "RISK_ADMIN"].includes(user.role);
   const resource = useWorkflowResource(active && period.month ? dashboardReportPath(business.msmeId, period.month) : null, user.accessToken, revision);
   const report = resource.data;
   const series = report?.series || [];

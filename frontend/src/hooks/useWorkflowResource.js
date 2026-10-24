@@ -3,18 +3,24 @@ import { apiRequest } from "../api/client";
 
 export function useWorkflowResource(path, token, revision = 0) {
   const [result, setResult] = useState(null);
-  const key = `${path}:${revision}:${token}`;
+  const [events, setEvents] = useState(0);
+  useEffect(() => {
+    const refresh = () => setEvents(value => value + 1);
+    window.addEventListener("msme-data-changed", refresh);
+    return () => window.removeEventListener("msme-data-changed", refresh);
+  }, []);
+  const key = `${path}:${revision}:${events}:${token}`;
   useEffect(() => {
     if (!path) return;
     const controller = new AbortController();
     apiRequest(path, { token, signal: controller.signal })
-      .then(data => { if (!controller.signal.aborted) setResult({ key, data }); })
-      .catch(error => { if (!controller.signal.aborted) setResult({ key, error: error.message, errorStatus: error.status }); });
+      .then(data => { if (!controller.signal.aborted) setResult({ key, path, token, data }); })
+      .catch(error => { if (!controller.signal.aborted) setResult({ key, path, token, error: error.message, errorStatus: error.status }); });
     return () => controller.abort();
   }, [path, token, revision, key]);
   return !path ? { loading: false } : result?.key === key
     ? { ...result, loading: false }
-    : { loading: true };
+    : { data: result?.path === path && result?.token === token ? result.data : undefined, loading: true };
 }
 
 export function useWorkflowAction() {

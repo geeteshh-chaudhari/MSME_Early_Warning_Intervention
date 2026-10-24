@@ -226,10 +226,10 @@ public class ThresholdConfigRepository {
             SELECT *
             FROM THRESHOLD_CONFIG
             WHERE MSME_ID = :msmeId
-              AND STATUS = 'APPROVED'
-              AND EFFECTIVE_FROM <= :asOf
-            ORDER BY EFFECTIVE_FROM DESC,
-                     VERSION_NO DESC
+
+
+            ORDER BY VERSION_NO DESC,
+                     THRESHOLD_CONFIG_ID DESC
             FETCH FIRST 1 ROW ONLY
             """;
 

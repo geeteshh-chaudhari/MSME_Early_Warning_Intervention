@@ -38,6 +38,7 @@ public class AssessmentService {
     private final AssessmentIndicatorResultRepository indicatorRepository;
     private final TransactionTemplate transactionTemplate;
     private final MsmeAccessClient msmeAccessClient;
+    private final com.msme.client.AssessmentWarningClient warningClient;
 
     public AssessmentService(
             AssessmentCalculator calculator,
@@ -46,7 +47,8 @@ public class AssessmentService {
             RiskAssessmentRepository assessmentRepository,
             AssessmentIndicatorResultRepository indicatorRepository,
             PlatformTransactionManager transactionManager,
-            MsmeAccessClient msmeAccessClient) {
+            MsmeAccessClient msmeAccessClient,
+            com.msme.client.AssessmentWarningClient warningClient) {
 
         this.calculator = calculator;
         this.financeClient = financeClient;
@@ -56,6 +58,7 @@ public class AssessmentService {
         this.transactionTemplate =
                 new TransactionTemplate(transactionManager);
         this.msmeAccessClient = msmeAccessClient;
+        this.warningClient = warningClient;
     }
 
     public AssessmentResponse create(
@@ -113,7 +116,7 @@ public class AssessmentService {
                 );
             }
 
-            return getById(existing.get().assessmentId());
+            return withWarning(getById(existing.get().assessmentId()));
         }
 
         ThresholdConfig threshold =
@@ -144,6 +147,8 @@ public class AssessmentService {
         try {
             Long assessmentId = transactionTemplate.execute(status -> {
 
+                // Serialize assessment creation/backfills for the same business.
+                assessmentRepository.lockMsme(request.msmeId());
                 // Recheck inside the transaction.
                 var duplicate = assessmentRepository
                         .findBySnapshotId(current.snapshotId());
@@ -152,10 +157,7 @@ public class AssessmentService {
                     return duplicate.get().assessmentId();
                 }
 
-                Long previousId = assessmentRepository
-                        .findLatestByMsmeId(request.msmeId())
-                        .map(RiskAssessment::assessmentId)
-                        .orElse(null);
+                Long previousId = null; // Set from reporting periods after insertion.
 
                 RiskAssessment assessment = new RiskAssessment(
                         null,
@@ -188,6 +190,7 @@ public class AssessmentService {
                                 .toList();
 
                 indicatorRepository.saveAll(results);
+                assessmentRepository.repairChronology(request.msmeId());
 
                 return newId;
             });
@@ -198,7 +201,7 @@ public class AssessmentService {
                 );
             }
 
-            return getById(assessmentId);
+            return withWarning(getById(assessmentId));
 
         } catch (DataIntegrityViolationException ex) {
 
@@ -209,7 +212,7 @@ public class AssessmentService {
             );
 
             if (duplicate.isPresent()) {
-                return getById(duplicate.get().assessmentId());
+                return withWarning(getById(duplicate.get().assessmentId()));
             }
 
             throw new InvalidRequestException(
@@ -227,11 +230,12 @@ public class AssessmentService {
                 || request.msmeId() == null
                 || request.msmeId() <= 0
                 || request.reportingPeriod() == null
-                || request.reportingPeriod().getDayOfMonth() != 1) {
+                || request.reportingPeriod().getDayOfMonth() != 1
+                || !request.reportingPeriod().isBefore(java.time.LocalDate.now(
+                        java.time.ZoneId.of("Asia/Kolkata")).withDayOfMonth(1))) {
 
             throw new InvalidRequestException(
-                    "Valid MSME ID and first-of-month "
-                            + "reporting period are required"
+                    "A valid MSME ID and completed reporting month are required"
             );
         }
 
@@ -255,6 +259,13 @@ public class AssessmentService {
         msmeAccessClient.checkAccess(assessment.msmeId());
 
         return toAssessmentResponse(assessment);
+    }
+
+    private AssessmentResponse withWarning(AssessmentResponse response) {
+        // This runs only after the assessment and all indicators have committed.
+        if (response.severity() != com.msme.enums.Severity.HEALTHY)
+            warningClient.process(response.assessmentId());
+        return response;
     }
 
     public List<IndicatorResultResponse> getIndicators(
@@ -350,7 +361,8 @@ public class AssessmentService {
                 assessment.severity(),
                 assessment.stressPattern(),
                 assessment.previousAssessmentId(),
-                loadIndicators(assessment.assessmentId())
+                loadIndicators(assessment.assessmentId()),
+                assessmentRepository.reportingPeriod(assessment.assessmentId())
         );
     }
 

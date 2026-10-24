@@ -17,7 +17,8 @@ class WarningAutomationSupportTest {
     private final ActivityLogRepository activities = mock(ActivityLogRepository.class);
     private final CaseAccessService access = mock(CaseAccessService.class);
     private final WarningService service = new WarningService(warnings, assessments, indicators,
-            mock(InterventionRepository.class), activities, access);
+            mock(InterventionRepository.class), activities, access,
+            mock(org.springframework.context.ApplicationEventPublisher.class));
 
     private RiskAssessment assessment(String severity) {
         var assessment = new RiskAssessment();
@@ -25,6 +26,7 @@ class WarningAutomationSupportTest {
         assessment.setMsmeId(9L);
         assessment.setSeverity(severity);
         when(assessments.findById(7L)).thenReturn(Optional.of(assessment));
+        when(assessments.findLockedById(7L)).thenReturn(Optional.of(assessment));
         return assessment;
     }
 
@@ -43,7 +45,7 @@ class WarningAutomationSupportTest {
 
         var result = service.createAutomatic(7L);
 
-        assertEquals("{\"status\":\"pending\",\"actions\":[]}", result.getRecommendedAction());
+        assertEquals(RecommendationWorkflow.UNAVAILABLE, result.getRecommendedAction());
         assertTrue(result.getWhyNowText().contains("Current revenue is zero"));
         var audit = ArgumentCaptor.forClass(ActivityLog.class);
         verify(activities).save(audit.capture());
@@ -79,9 +81,12 @@ class WarningAutomationSupportTest {
         when(activities.existsByRelatedEntityTypeAndRelatedEntityIdAndActionCode(
                 "WARNING", 11L, "ESCALATE")).thenReturn(true);
 
+        var actor=mock(com.msme.security.CustomUserPrincipal.class);
+        when(actor.getRole()).thenReturn("RM");
+        when(access.currentUser()).thenReturn(actor);
         service.requireOwner(warning);
 
-        verify(access).requireRole("RM");
+        verify(access).currentUser();
         verify(access, never()).requireRole("RISK_ADMIN");
     }
 
@@ -91,9 +96,12 @@ class WarningAutomationSupportTest {
         warning.setWarningStatus("OPEN");
         when(warnings.findById(11L)).thenReturn(Optional.of(warning));
 
+        var actor=mock(com.msme.security.CustomUserPrincipal.class);
+        when(actor.getRole()).thenReturn("RM");
+        when(access.currentUser()).thenReturn(actor);
         service.requireOwner(warning);
 
-        verify(access).requireRole("RM");
+        verify(access).currentUser();
     }
 
     @Test void generatedEvidenceIsStoredWithoutReplacingItsJson() {

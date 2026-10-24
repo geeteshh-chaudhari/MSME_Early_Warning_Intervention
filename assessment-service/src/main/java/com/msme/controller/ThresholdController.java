@@ -59,7 +59,6 @@ public class ThresholdController {
                 .body(response);
     }
 
-    @PostMapping("/thresholds/{id}/review")
     @PreAuthorize("hasRole('RISK_ADMIN')")
     public ResponseEntity<ThresholdResponse> reviewThreshold(
             @PathVariable @Positive Long id,
@@ -78,7 +77,7 @@ public class ThresholdController {
     }
 
     @GetMapping("/thresholds/{id}")
-    @PreAuthorize("hasAnyRole('RISK_ADMIN', 'RM')")
+    @PreAuthorize("hasAnyRole('RISK_ADMIN', 'RM', 'MSME_REP')")
     public ResponseEntity<ThresholdResponse> getThreshold(
             @PathVariable @Positive Long id) {
 
@@ -88,7 +87,7 @@ public class ThresholdController {
     }
 
     @GetMapping("/msmes/{msmeId}/thresholds")
-    @PreAuthorize("hasAnyRole('RISK_ADMIN', 'RM')")
+    @PreAuthorize("hasAnyRole('RISK_ADMIN', 'RM', 'MSME_REP')")
     public ResponseEntity<List<ThresholdResponse>> getHistory(
             @PathVariable @Positive Long msmeId,
 

@@ -1,6 +1,10 @@
 package com.msme.security;
 
 import java.io.IOException;
+import java.util.Set;
+import org.springframework.dao.DataAccessException;
+import org.springframework.security.core.AuthenticationException;
+import io.jsonwebtoken.JwtException;
 
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -34,7 +38,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             FilterChain filterChain)
             throws ServletException, IOException {
 
-        String authHeader = request.getHeader("Authorization");
+        if (!BrowserAuthentication.csrfValid(request)) {
+            response.sendError(403, "CSRF verification failed");
+            return;
+        }
+        if (Set.of("/api/auth/login", "/api/auth/logout").contains(request.getRequestURI())) {
+            filterChain.doFilter(request, response);
+            return;
+        }
+        String authHeader = BrowserAuthentication.authorization(request);
 
         /*
          * If there is no Bearer token, continue.
@@ -89,18 +101,24 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
                     SecurityContextHolder.getContext()
                             .setAuthentication(authentication);
+                } else {
+                    response.sendError(401, "Invalid or inactive account");
+                    return;
                 }
             }
 
-        } catch (RuntimeException ex) {
-
-            /*
-             * Invalid, expired, malformed token, unknown user, etc.
-             *
-             * Do not authenticate the request.
-             * For protected endpoints Spring Security will return 401.
-             */
+        } catch (DataAccessException ex) {
             SecurityContextHolder.clearContext();
+            response.sendError(503, "Authentication data is unavailable");
+            return;
+        } catch (JwtException | IllegalArgumentException | AuthenticationException ex) {
+            SecurityContextHolder.clearContext();
+            response.sendError(401, "Invalid or expired authentication token");
+            return;
+        } catch (RuntimeException ex) {
+            SecurityContextHolder.clearContext();
+            response.sendError(500, "An unexpected authentication error occurred");
+            return;
         }
 
         filterChain.doFilter(request, response);

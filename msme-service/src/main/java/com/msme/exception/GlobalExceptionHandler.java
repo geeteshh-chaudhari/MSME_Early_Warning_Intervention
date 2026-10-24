@@ -19,6 +19,28 @@ import jakarta.servlet.http.HttpServletRequest;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler({org.springframework.security.authentication.InternalAuthenticationServiceException.class,
+            org.springframework.security.authentication.AuthenticationServiceException.class,
+            org.springframework.dao.DataAccessException.class})
+    public ResponseEntity<ErrorResponse> unavailable(Exception ex, HttpServletRequest request) {
+        return ResponseEntity.status(503).body(new ErrorResponse(LocalDateTime.now(),503,
+                "Service Unavailable","Authentication or database storage unavailable",request.getRequestURI()));
+    }
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<ErrorResponse> forbidden(Exception ex, HttpServletRequest request) {
+        return ResponseEntity.status(403).body(new ErrorResponse(LocalDateTime.now(),403,
+                "Forbidden","You are not allowed to perform this action",request.getRequestURI()));
+    }
+    @ExceptionHandler({org.springframework.http.converter.HttpMessageNotReadableException.class,
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class,
+            org.springframework.web.bind.MissingServletRequestParameterException.class,
+            jakarta.validation.ConstraintViolationException.class,
+            org.springframework.web.method.annotation.HandlerMethodValidationException.class})
+    public ResponseEntity<ErrorResponse> malformed(Exception ex, HttpServletRequest request) {
+        return ResponseEntity.badRequest().body(new ErrorResponse(LocalDateTime.now(),400,
+                "Bad Request","Invalid or missing request value",request.getRequestURI()));
+    }
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleResourceNotFound(
             ResourceNotFoundException ex,

@@ -1,5 +1,6 @@
 import { RefreshCw } from "lucide-react";
 import { amountLabel, humanize } from "./workflowFormat";
+import { assessmentMonths, previousIndicatorValue } from "./assessmentDisplay";
 
 export function WorkflowStatus({ value }) {
   const tone = ["HEALTHY", "APPROVED", "CLOSED", "CLOSED_REVIEWED"].includes(value) ? "success"
@@ -24,8 +25,9 @@ export function WorkflowPagination({ page, onPage, loading, count, hasNext }) {
       <button type="button" className="button secondary" disabled={loading || !hasNext} onClick={() => onPage(page + 1)}>Next</button></div>
   </div>;
 }
-export function IndicatorTable({ indicators = [] }) {
-  return <div className="table-scroll"><table><thead><tr><th>Indicator</th><th>Calculated %</th><th>Threshold %</th><th>Result</th><th>Explanation</th></tr></thead>
-    <tbody>{indicators.map(i => <tr key={i.indicatorCode}><td>{humanize(i.indicatorCode)}</td><td>{amountLabel(i.calculatedValue)}</td><td>{amountLabel(i.thresholdValueUsed)}</td>
+export function IndicatorTable({ indicators = [], reportingPeriod, previousIndicators = [], previousLoading = false }) {
+  const [previousMonth, currentMonth] = assessmentMonths(reportingPeriod);
+  return <div className="table-scroll"><table><thead><tr><th scope="col">Indicator</th><th scope="col">{previousMonth}<br />Calculated %</th><th scope="col">{currentMonth}<br />Calculated %</th><th scope="col">Threshold %</th><th scope="col">Result</th><th scope="col">Explanation</th></tr></thead>
+    <tbody>{indicators.map(i => <tr key={i.indicatorCode}><td>{humanize(i.indicatorCode)}</td><td>{previousLoading && i.indicatorCode !== "REVENUE_DETERIORATION" ? "Loading…" : amountLabel(previousIndicatorValue(i, previousIndicators))}</td><td>{amountLabel(i.calculatedValue)}</td><td>{amountLabel(i.thresholdValueUsed)}</td>
       <td><span className={`badge ${i.breached ? "danger" : "success"}`}>{i.breached ? "Breached" : "Within threshold"}</span></td><td className="workflow-wrap">{i.explanation || "—"}</td></tr>)}</tbody></table></div>;
 }

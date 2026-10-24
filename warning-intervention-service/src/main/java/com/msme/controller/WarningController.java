@@ -14,12 +14,6 @@ public class WarningController {
     private final WarningService warningService;
     public WarningController(WarningService warningService) { this.warningService = warningService; }
 
-    @PostMapping
-    public ResponseEntity<WarningResponse> create(@Valid @RequestBody CreateWarningRequest request) {
-        var result = warningService.createWarning(request);
-        return ResponseEntity.created(URI.create("/api/warnings/" + result.getWarningId())).body(result);
-    }
-
     @GetMapping
     public ResponseEntity<Page<WarningResponse>> list(@RequestParam Long msmeId,
             @RequestParam(required = false) String status, @RequestParam(defaultValue = "0") int page,

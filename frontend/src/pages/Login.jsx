@@ -15,13 +15,15 @@ import {
 import { useAuth } from "../context/AuthContext";
 
 export default function Login() {
-  const { user, login } = useAuth();
+  const { user, login, restoring } = useAuth();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  if (restoring) return <p role="status">Restoring your session...</p>;
 
   if (user) {
     return <Navigate to="/dashboard" replace />;

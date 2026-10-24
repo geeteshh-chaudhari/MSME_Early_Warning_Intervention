@@ -31,6 +31,7 @@ class RecommendationWorkflowTest {
         var assessment=new RiskAssessment();assessment.setAssessmentId(20L);assessment.setMsmeId(1L);assessment.setSnapshotId(30L);
         var snapshot=new FinancialSnapshot();snapshot.setReportingPeriod(LocalDate.of(2026,9,1));
         when(warnings.findLockedById(10L)).thenReturn(Optional.of(warning));
+        when(warnings.findById(10L)).thenReturn(Optional.of(warning));
         when(cases.assessment(20L)).thenReturn(assessment);
         when(cases.writable(10L)).thenReturn(warning);
         when(snapshots.findById(30L)).thenReturn(Optional.of(snapshot));
@@ -41,6 +42,9 @@ class RecommendationWorkflowTest {
             assertEquals("t".repeat(40),exchange.getRequestHeaders().getFirst("X-Internal-Token"));
             String body=new String(exchange.getRequestBody().readAllBytes(),StandardCharsets.UTF_8);
             assertTrue(body.contains("2026-09"));assertTrue(body.contains("msme_id"));
+            assertTrue(body.contains("warning_id"));
+            // Simulate the Python API committing its conditional CLOB update.
+            if(status == 200 && !reply.contains("\"actions\":[]")) warning.setRecommendedAction(reply);
             byte[] bytes=reply.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type","application/json");
             exchange.sendResponseHeaders(status,bytes.length);exchange.getResponseBody().write(bytes);exchange.close();
@@ -69,7 +73,7 @@ class RecommendationWorkflowTest {
         assertEquals(RecommendationWorkflow.UNAVAILABLE,warning.getRecommendedAction());
         verify(cases).systemAudit(eq(warning),eq("RECOMMENDATION_UNAVAILABLE"),anyString(),anyString());
         status=200;workflow.explicitlyGenerate(10L);
-        verify(cases, times(2)).requireOwner(warning);
+        verify(cases).requireOwner(warning);
         assertTrue(workflow.generated(10L));
         assertEquals(2,requests.get());
     }
