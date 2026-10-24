@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CircleAlert, X } from "lucide-react";
 import InterventionWorkflow from "./InterventionWorkflow";
 import { apiRequest } from "../api/client";
-import { decideWarning, interventionsPath, warningHistoryPath, warningsPath } from "../api/workflowApi";
+import { decideWarning, interventionsPath, warningHistoryPath, warningsPath, WARNING_PAGE_SIZE } from "../api/workflowApi";
 import { useWorkflowAction, useWorkflowResource } from "../hooks/useWorkflowResource";
 import { dateLabel, humanize, listOf, recommendationText } from "./workflowFormat";
 import { ResourceState, WorkflowNotice, WorkflowPagination, WorkflowStatus } from "./WorkflowUi";
@@ -46,7 +46,7 @@ function DecisionForm({ warning, choices, token, onSaved }) {
   </div>;
 }
 
-function WarningCase({ id, user, business, refreshVersion, onChanged, onClose }) {
+function WarningCase({ id, user, business, refreshVersion, onChanged, onClose, caseSectionRef }) {
   const [revision, setRevision] = useState(0);
   const [caseRevision, setCaseRevision] = useState(0);
   const [historyPage, setHistoryPage] = useState(0);
@@ -78,7 +78,7 @@ function WarningCase({ id, user, business, refreshVersion, onChanged, onClose })
       onChanged();
     }
   }
-  return <section className="panel" aria-label="Warning case details"><div className="panel-heading"><div><h2>Warning #{id}</h2><p>Case evidence, decisions and activity</p></div><div className="management-toolbar"><button className="button secondary" disabled={resource.loading} onClick={() => { setCaseRevision(v => v + 1); setRevision(v => v + 1); }}>Reload case</button><button className="icon-button" onClick={onClose} aria-label="Close warning details"><X size={18} /></button></div></div>
+  return <section ref={caseSectionRef} className="panel" aria-label="Warning case details" tabIndex={-1} style={{ scrollMarginTop: "24px" }}><div className="panel-heading"><div><h2>Warning #{id}</h2><p>Case evidence, decisions and activity</p></div><div className="management-toolbar"><button className="button secondary" disabled={resource.loading} onClick={() => { setCaseRevision(v => v + 1); setRevision(v => v + 1); }}>Reload case</button><button className="icon-button" onClick={onClose} aria-label="Close warning details"><X size={18} /></button></div></div>
     {message && <div className="workflow-inset notice snapshot-success" role="status">{message}</div>}
     <ResourceState resource={resource}>{warning && <>
       <div className="workflow-summary"><WorkflowStatus value={warning.warningStatus} /><span>Assessment #{warning.assessmentId}</span><span>{dateLabel(warning.createdAt)}</span></div>
@@ -98,6 +98,19 @@ export default function WarningWorkflow({ business, user, onWarningSaved }) {
   const [status, setStatus] = useState("");
   const [revision, setRevision] = useState(0);
   const [caseId, setCaseId] = useState(null);
+  const caseSectionRef = useRef(null);
+  function reviewCase(id) {
+    setCaseId(id);
+    requestAnimationFrame(() => {
+      const section = caseSectionRef.current;
+      if (!section) return;
+      section.focus({ preventScroll: true });
+      section.scrollIntoView({
+        behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
+        block: "start",
+      });
+    });
+  }
   useEffect(() => {
     function refresh() {
       if (document.visibilityState === "visible") setRevision(value => value + 1);
@@ -113,7 +126,7 @@ export default function WarningWorkflow({ business, user, onWarningSaved }) {
   const rows = listOf(resource.data);
   function changed(warning) { setRevision(v => v + 1); if (warning) onWarningSaved(warning); }
   return <div className="workflow-stack"><section className="panel"><div className="panel-heading"><div><h2>Warnings & decisions</h2><p>{user.role === "MSME_REP" ? "Read-only warnings for your business." : "Open a warning to review evidence, make a permitted decision and view its history."}</p></div><div className="management-toolbar"><div className="snapshot-field"><label htmlFor="warning-filter">Status</label><select id="warning-filter" value={status} onChange={e => { setStatus(e.target.value); setPage(0); }}><option value="">All statuses</option>{statuses.map(s => <option value={s} key={s}>{humanize(s)}</option>)}</select></div><button className="button secondary" disabled={resource.loading} onClick={() => setRevision(v => v + 1)}>Reload warnings</button></div></div>
-    <ResourceState resource={resource} empty={!rows.length}><div className="warning-list">{rows.map(w => <article className="warning-item" key={w.warningId}><div className="warning-symbol"><CircleAlert size={20} /></div><div className="warning-body"><div className="warning-title"><h3>{humanize(w.primaryDriver)}</h3><WorkflowStatus value={w.warningStatus} /></div><p>{w.whyNowText}</p>{["RM", "RISK_ADMIN"].includes(user.role) && w.recommendedAction && <p className="recommended-action">{recommendationText(w.recommendedAction)}</p>}<small>{dateLabel(w.createdAt)} · Warning #{w.warningId}</small><button className="table-open" onClick={() => setCaseId(w.warningId)} aria-label={`Open warning ${w.warningId}`}>{user.role === "MSME_REP" ? "View details" : "Review case"}</button></div></article>)}</div></ResourceState>
-    <WorkflowPagination page={page} onPage={setPage} loading={resource.loading} count={resource.data?.totalElements} hasNext={!resource.error && (resource.data?.last === false || (resource.data?.last == null && rows.length === 10))} />
-  </section>{caseId && <WarningCase key={caseId} id={caseId} business={business} user={user} refreshVersion={revision} onChanged={changed} onClose={() => setCaseId(null)} />}</div>;
+    <ResourceState resource={resource} empty={!rows.length}><div className="warning-list">{rows.map(w => <article className="warning-item" key={w.warningId}><div className="warning-symbol"><CircleAlert size={20} /></div><div className="warning-body"><div className="warning-title"><h3>{humanize(w.primaryDriver)}</h3><WorkflowStatus value={w.warningStatus} /></div><p>{w.whyNowText}</p>{["RM", "RISK_ADMIN"].includes(user.role) && w.recommendedAction && <p className="recommended-action">{recommendationText(w.recommendedAction)}</p>}<small>{dateLabel(w.createdAt)} · Warning #{w.warningId}</small><button className="table-open" onClick={() => reviewCase(w.warningId)} aria-label={`Open warning ${w.warningId}`}>{user.role === "MSME_REP" ? "View details" : "Review case"}</button></div></article>)}</div></ResourceState>
+    <WorkflowPagination page={page} onPage={setPage} loading={resource.loading} count={resource.data?.totalElements} hasNext={!resource.error && (resource.data?.last === false || (resource.data?.last == null && rows.length === WARNING_PAGE_SIZE))} />
+  </section>{caseId && <WarningCase key={caseId} id={caseId} caseSectionRef={caseSectionRef} business={business} user={user} refreshVersion={revision} onChanged={changed} onClose={() => setCaseId(null)} />}</div>;
 }

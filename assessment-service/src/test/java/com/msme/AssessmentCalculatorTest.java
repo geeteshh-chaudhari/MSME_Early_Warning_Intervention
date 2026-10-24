@@ -69,14 +69,68 @@ class AssessmentCalculatorTest {
     }
 
     @Test
-    void revenueBreachRequiresDeclineInBothMonths() {
+    void revenueBreachWhenOnlyLatestMonthCrossesThreshold() {
         // First decline is only 10%; second decline is over 15%.
         AssessmentCalculationResult result =
                 calculate("100", "90", "60", "20", "60");
 
-        assertFalse(indicator(result,
+        assertTrue(indicator(result,
                 IndicatorCode.REVENUE_DETERIORATION).breached());
-        assertEquals(Severity.HEALTHY, result.severity());
+        assertEquals(Severity.WATCH, result.severity());
+    }
+
+    @Test
+    void revenueBreachWhenOnlyEarlierMonthCrossesThreshold() {
+        AssessmentCalculationResult result = calculate("100", "80", "76", "20", "60");
+        assertTrue(indicator(result, IndicatorCode.REVENUE_DETERIORATION).breached());
+        assertDecimal("5", indicator(result, IndicatorCode.REVENUE_DETERIORATION).calculatedValue());
+        assertEquals(Severity.WATCH, result.severity());
+    }
+
+    @Test
+    void earlierMonthBreachRemainsWhenLatestMonthRecovers() {
+        AssessmentCalculationResult result = calculate("100", "80", "100", "20", "60");
+        assertTrue(indicator(result, IndicatorCode.REVENUE_DETERIORATION).breached());
+        assertDecimal("0", indicator(result, IndicatorCode.REVENUE_DETERIORATION).calculatedValue());
+    }
+
+    @Test
+    void noRevenueBreachWhenBothDeclinesAreBelowThreshold() {
+        AssessmentCalculationResult result = calculate("100", "90", "81", "20", "60");
+        assertFalse(indicator(result, IndicatorCode.REVENUE_DETERIORATION).breached());
+    }
+
+    @Test
+    void latestMonthCanBreachWithoutCalculableEarlierPercentage() {
+        AssessmentCalculationResult result = calculate("0", "100", "80", "20", "60");
+        assertTrue(indicator(result, IndicatorCode.REVENUE_DETERIORATION).breached());
+        assertDecimal("20", indicator(result, IndicatorCode.REVENUE_DETERIORATION).calculatedValue());
+    }
+
+    @Test
+    void earlierFallToZeroStillBreachesAfterRevenueResumes() {
+        AssessmentCalculationResult result = calculate("100", "0", "80", "20", "60");
+        IndicatorCalculation revenue = indicator(result, IndicatorCode.REVENUE_DETERIORATION);
+        assertTrue(revenue.breached());
+        assertNull(revenue.calculatedValue());
+        assertTrue(revenue.explanation().contains("first period 100.0000; second period not applicable"));
+        assertFalse(revenue.explanation().contains("No deterioration breach"));
+    }
+
+    @Test
+    void revenueGrowthDoesNotBreachEvenWithZeroThreshold() {
+        AssessmentCalculationResult result = calculator.calculate(
+                snapshots("100", "120", "150", "20", "60"),
+                new Thresholds(bd("0"), bd("30"), bd("70")));
+        assertFalse(indicator(result, IndicatorCode.REVENUE_DETERIORATION).breached());
+        assertDecimal("0", indicator(result, IndicatorCode.REVENUE_DETERIORATION).calculatedValue());
+    }
+
+    @Test
+    void zeroCurrentRevenueStillRequiresHighPriorityReview() {
+        AssessmentCalculationResult result = calculate("100", "100", "0", "20", "60");
+        assertTrue(indicator(result, IndicatorCode.REVENUE_DETERIORATION).breached());
+        assertEquals(Severity.HIGH_PRIORITY, result.severity());
     }
 
     @Test

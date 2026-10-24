@@ -39,6 +39,8 @@ import { useAuth } from "../context/AuthContext";
 import { apiRequest } from "../api/client";
 import { deactivateBusiness } from "../api/businessApi";
 
+const BUSINESS_PAGE_SIZE = 5;
+
 const ROLE_CONFIG = {
   MSME_REP: {
     label: "MSME Representative",
@@ -690,6 +692,7 @@ function DashboardWorkspace({ initialNotification }) {
   const [businesses, setBusinesses] = useState([]);
   const [selectedId, setSelectedId] = useState(() => initialNotification ? String(initialNotification.msmeId) : "");
   const [search, setSearch] = useState("");
+  const [businessPage, setBusinessPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -784,6 +787,14 @@ function DashboardWorkspace({ initialNotification }) {
       .includes(search.toLowerCase())
   );
 
+  const currentBusinessPage = Math.min(
+    businessPage,
+    Math.max(0, Math.ceil(filtered.length / BUSINESS_PAGE_SIZE) - 1)
+  );
+  const visibleBusinesses = user.role === "RISK_ADMIN"
+    ? filtered.slice(currentBusinessPage * BUSINESS_PAGE_SIZE, (currentBusinessPage + 1) * BUSINESS_PAGE_SIZE)
+    : filtered;
+
   const totalCredit = businesses.reduce(
     (sum, business) =>
       sum + (Number(business.sanctionedCreditLimit) || 0),
@@ -853,6 +864,7 @@ function DashboardWorkspace({ initialNotification }) {
     },
   ].filter(
   (item) =>
+    (item.id !== "portfolio" || user.role !== "RISK_ADMIN") &&
     (item.id !== "recommendations" || ["RM", "RISK_ADMIN"].includes(user.role))
 );
 
@@ -1090,13 +1102,12 @@ function DashboardWorkspace({ initialNotification }) {
                   <strong>{config.label}</strong>
                 </div>
 
-                <div>
-                  <small>Business ID</small>
-                  <strong>
-                    {user.msmeId ||
-                      "Not linked to one business"}
-                  </strong>
-                </div>
+                {user.role === "MSME_REP" && (
+                  <div>
+                    <small>Business ID</small>
+                    <strong>{user.msmeId || "Not linked to one business"}</strong>
+                  </div>
+                )}
               </div>
 
               <button
@@ -1184,7 +1195,7 @@ function DashboardWorkspace({ initialNotification }) {
                   </div>
                 )}
 
-              {(tab === "portfolio" ||
+              {((tab === "portfolio" && user.role !== "RISK_ADMIN") ||
                 (tab === "overview" && user.role !== "RM")) &&
                 user.role !== "MSME_REP" && (
                   <section className="panel">
@@ -1210,9 +1221,10 @@ function DashboardWorkspace({ initialNotification }) {
                           aria-label="Search businesses"
                           placeholder="Search businesses…"
                           value={search}
-                          onChange={(event) =>
-                            setSearch(event.target.value)
-                          }
+                          onChange={(event) => {
+                            setSearch(event.target.value);
+                            setBusinessPage(0);
+                          }}
                         />
                       </div>
                       </div>
@@ -1235,7 +1247,7 @@ function DashboardWorkspace({ initialNotification }) {
                         </thead>
 
                         <tbody>
-                          {filtered.map((business) => (
+                          {visibleBusinesses.map((business) => (
                             <tr
                               key={business.msmeId}
                               className={
@@ -1319,6 +1331,15 @@ function DashboardWorkspace({ initialNotification }) {
                         Try another search or check your
                         business assignments.
                       </Empty>
+                    )}
+                    {user.role === "RISK_ADMIN" && (
+                      <WorkflowPagination
+                        page={currentBusinessPage}
+                        onPage={setBusinessPage}
+                        loading={loading}
+                        count={filtered.length}
+                        hasNext={(currentBusinessPage + 1) * BUSINESS_PAGE_SIZE < filtered.length}
+                      />
                     )}
                   </section>
                 )}

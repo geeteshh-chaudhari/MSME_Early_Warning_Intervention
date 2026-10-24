@@ -4,16 +4,23 @@ import { assessmentHistoryPath, runAssessment } from "../api/workflowApi";
 import { useWorkflowAction, useWorkflowResource } from "../hooks/useWorkflowResource";
 import { amountLabel, dateLabel, humanize, listOf } from "./workflowFormat";
 import { IndicatorTable, ResourceState, WorkflowNotice, WorkflowPagination, WorkflowStatus } from "./WorkflowUi";
+import { previousMonthIndicators } from "./assessmentDisplay";
 
 function AssessmentDetails({ id, token, onClose }) {
   const resource = useWorkflowResource(`/assessment/assessments/${id}`, token);
   const detail = resource.data;
+  const previousResource = useWorkflowResource(
+    detail?.previousAssessmentId ? `/assessment/assessments/${detail.previousAssessmentId}` : null, token,
+  );
+  const previousIndicators = previousMonthIndicators(detail, previousResource.data);
   return <section className="panel" aria-label="Assessment details">
     <div className="panel-heading"><div><h2>Assessment #{id}</h2><p>Saved evidence and applied thresholds</p></div><button className="icon-button" onClick={onClose} aria-label="Close assessment details"><X size={18} /></button></div>
     <ResourceState resource={resource}>
       {detail && <>
         <div className="workflow-summary"><WorkflowStatus value={detail.severity} /><span>Reporting {String(detail.reportingPeriod || "").slice(0, 7)}</span><span>Run {dateLabel(detail.assessmentDate)}</span><span>Pattern: {humanize(detail.stressPattern)}</span><span>Threshold #{detail.thresholdConfigId}</span></div>
-        <IndicatorTable indicators={detail.indicators} />
+        <IndicatorTable indicators={detail.indicators} reportingPeriod={detail.reportingPeriod} previousIndicators={previousIndicators} previousLoading={previousResource.loading} />
+        {previousResource.error && <p className="workflow-inset notice error" role="alert">Could not load the previous month's saved assessment: {previousResource.error}</p>}
+        <p className="workflow-inset management-help">Revenue decline is shown for both months, each compared with its preceding month. Earlier-month overdue receivables and credit utilisation come from that month's saved assessment. Thresholds, results and explanations belong to the reporting-month assessment. A dash means no saved calculation is available.</p>
         <p className="workflow-inset management-help">Warnings are generated automatically from saved breached indicators. Open Warnings to review the result.</p>
       </>}
     </ResourceState>

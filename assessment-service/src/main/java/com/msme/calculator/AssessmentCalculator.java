@@ -63,9 +63,9 @@ public class AssessmentCalculator {
         BigDecimal firstDecline = decline(oldest.revenue(), middle.revenue());
         BigDecimal secondDecline = decline(middle.revenue(), current.revenue());
         boolean zeroRevenue = current.revenue().signum() == 0;
-        boolean revenueBreached = zeroRevenue || (firstDecline != null && secondDecline != null
-                && firstDecline.compareTo(thresholds.revenueDeclinePct()) >= 0
-                && secondDecline.compareTo(thresholds.revenueDeclinePct()) >= 0);
+        boolean revenueBreached = zeroRevenue
+                || breachesRevenueThreshold(firstDecline, thresholds.revenueDeclinePct())
+                || breachesRevenueThreshold(secondDecline, thresholds.revenueDeclinePct());
         BigDecimal overduePct = current.totalReceivables().signum() == 0 ? BigDecimal.ZERO
                 : percentage(current.overdueReceivables(), current.totalReceivables());
 
@@ -106,13 +106,12 @@ public class AssessmentCalculator {
                 secondDecline,
                 thresholds.revenueDeclinePct(),
                 revenueBreached,
-                zeroRevenue
-                    ? (secondDecline == null ? "Revenue remains zero; percentage decline is not applicable. "
-                        : "Revenue fell to zero: 100% decline. ") + "High severity; immediate RM review required."
-                    : secondDecline == null ? "Revenue resumed from zero; percentage change is not applicable. No deterioration breach."
-                    : "Revenue decline: first period " + display(firstDecline) + "; second period "
-                        + display(secondDecline) + ". Both calculable declines must be at least "
-                        + display(thresholds.revenueDeclinePct()) + " for a normal breach."
+                "Revenue decline: first period " + display(firstDecline) + "; second period "
+                    + display(secondDecline) + ". A positive decline in either month at or above "
+                    + display(thresholds.revenueDeclinePct()) + "% raises a breach."
+                    + (zeroRevenue ? " Current revenue is zero. High severity; immediate RM review required."
+                        : secondDecline == null ? " Revenue resumed from zero; the second-period percentage is not applicable."
+                        : "")
         ));
 
         indicators.add(new IndicatorCalculation(
@@ -149,8 +148,19 @@ public class AssessmentCalculator {
         );
     }
 
+    private boolean breachesRevenueThreshold(BigDecimal decline, BigDecimal threshold) {
+        return decline != null && decline.signum() > 0 && decline.compareTo(threshold) >= 0;
+    }
+
     private BigDecimal decline(BigDecimal before, BigDecimal after) {
-        return before.signum() == 0 ? null : percentage(before.subtract(after), before);
+        if (before.signum() == 0) {
+            return null;
+        }
+
+        // Growth = (current revenue - previous revenue) / previous revenue * 100.
+        BigDecimal revenueGrowthPct = percentage(after.subtract(before), before);
+        // Falling revenue is a positive decline; growth means zero decline.
+        return revenueGrowthPct.negate().max(BigDecimal.ZERO);
     }
 
     private BigDecimal percentage(

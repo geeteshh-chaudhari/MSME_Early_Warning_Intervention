@@ -3,7 +3,8 @@ import { apiRequest } from "./client";
 export const assessmentHistoryPath = (id, page) => `/assessment/msmes/${id}/assessments?page=${page}&size=10`;
 export const thresholdHistoryPath = (id, page) => `/assessment/msmes/${id}/thresholds?page=${page}&size=10`;
 export const warningHistoryPath = (id, page) => `/warnings/${id}/history?page=${page}&size=10`;
-export const warningsPath = (id, page, status = "") => `/warnings?msmeId=${id}&page=${page}&size=10${status ? `&status=${encodeURIComponent(status)}` : ""}`;
+export const WARNING_PAGE_SIZE = 3;
+export const warningsPath = (id, page, status = "") => `/warnings?msmeId=${id}&page=${page}&size=${WARNING_PAGE_SIZE}${status ? `&status=${encodeURIComponent(status)}` : ""}`;
 
 export const runAssessment = (token, id, month) => apiRequest("/assessment/assessments/from-finance", {
   token, method: "POST", body: { msmeId: Number(id), reportingPeriod: `${month}-01` },

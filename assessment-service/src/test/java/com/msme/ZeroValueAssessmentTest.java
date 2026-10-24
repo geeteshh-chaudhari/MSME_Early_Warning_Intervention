@@ -24,8 +24,11 @@ class ZeroValueAssessmentTest {
  @Test void continuedZeroRevenueHasNoInventedPercentage(){
   var result=calculate("100","0","0","0","0");assertEquals(Severity.HIGH_PRIORITY,result.severity());assertNull(result.indicators().getFirst().calculatedValue());assertTrue(result.indicators().getFirst().breached());
  }
- @Test void revenueResumingIsNotDeterioration(){
-  var result=calculate("100","0","50","100","0");assertEquals(Severity.HEALTHY,result.severity());assertNull(result.indicators().getFirst().calculatedValue());assertFalse(result.indicators().getFirst().breached());
+ @Test void earlierDeclineStillBreachesWhenRevenueResumes(){
+  var result=calculate("100","0","50","100","0");assertEquals(Severity.WATCH,result.severity());assertNull(result.indicators().getFirst().calculatedValue());assertTrue(result.indicators().getFirst().breached());
+ }
+ @Test void revenueResumingWithoutEarlierDeclineIsHealthy(){
+  var result=calculate("0","0","50","100","0");assertEquals(Severity.HEALTHY,result.severity());assertNull(result.indicators().getFirst().calculatedValue());assertFalse(result.indicators().getFirst().breached());
  }
  @Test void overdueAboveTotalIsRejected(){assertThrows(IllegalArgumentException.class,()->calculate("100","100","100","0","1"));}
 }

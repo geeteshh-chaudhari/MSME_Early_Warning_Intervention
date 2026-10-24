@@ -44,6 +44,7 @@ class OracleRepository:
                     FROM {table('FINANCIAL_SNAPSHOT')}
                     WHERE msme_id = :msme_id AND reporting_period >= :start_at
                     AND reporting_period < :end_at ORDER BY reporting_period""", binds)
+                # Select by the snapshot's reporting month, including assessments run later.
                 # Assessment and threshold must belong to this business and snapshot.
                 assessments = rows(f"""SELECT a.assessment_id, a.snapshot_id,
                     a.threshold_config_id, a.severity, a.stress_pattern,
@@ -55,7 +56,7 @@ class OracleRepository:
                     JOIN {table('THRESHOLD_CONFIG', True)} t
                     ON t.threshold_config_id = a.threshold_config_id AND t.msme_id = a.msme_id
                     WHERE a.msme_id = :msme_id AND s.reporting_period >= :start_at
-                    AND s.reporting_period < :end_at AND a.assessment_date < :end_at
+                    AND s.reporting_period < :end_at
                     ORDER BY s.reporting_period, a.assessment_id""", binds)
                 indicators = rows(f"""SELECT i.assessment_id, i.indicator_code,
                     i.calculated_value, i.threshold_value_used, i.breached_flag,
@@ -64,7 +65,7 @@ class OracleRepository:
                     JOIN {table('FINANCIAL_SNAPSHOT')} s ON s.snapshot_id = a.snapshot_id
                     AND s.msme_id = a.msme_id
                     WHERE a.msme_id = :msme_id AND s.reporting_period >= :start_at
-                    AND s.reporting_period < :end_at AND a.assessment_date < :end_at
+                    AND s.reporting_period < :end_at
                     ORDER BY s.reporting_period, i.indicator_code""", binds)
             # No DML or commits, including on successful reads.
             conn.rollback()
