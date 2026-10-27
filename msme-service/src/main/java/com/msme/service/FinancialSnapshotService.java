@@ -76,8 +76,7 @@ public class FinancialSnapshotService {
 
         if (!MSME_ACTIVE.equals(msme.getIsActive())) {
             throw new InvalidRequestException(
-                "Financial data cannot be submitted "
-                + "for an inactive MSME"
+                "Financial data cannot be submitted for an inactive MSME"
             );
         }
 
@@ -94,8 +93,7 @@ public class FinancialSnapshotService {
                 )) {
 
             throw new DuplicateResourceException(
-                "A financial snapshot already exists "
-                + "for reporting period "
+                "A financial snapshot already exists for reporting period "
                 + YearMonth.from(reportingPeriod)
             );
         }
@@ -122,9 +120,7 @@ public class FinancialSnapshotService {
             request.getCreditUsed()
         );
 
-        snapshot.setSubmittedAt(now);
         snapshot.setCreatedAt(now);
-        snapshot.setUpdatedAt(now);
 
         FinancialSnapshot savedSnapshot =
                 financialSnapshotRepository.save(snapshot);
@@ -801,9 +797,7 @@ public class FinancialSnapshotService {
                 snapshot.getOverdueReceivables(),
                 snapshot.getCreditUsed(),
                 snapshot.getSubmittedByUserId(),
-                snapshot.getSubmittedAt(),
-                snapshot.getCreatedAt(),
-                snapshot.getUpdatedAt()
+                snapshot.getCreatedAt()
         );
     }
 }

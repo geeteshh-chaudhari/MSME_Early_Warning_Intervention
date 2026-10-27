@@ -4,15 +4,22 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.LocalDate;
 import java.util.List;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+
 import com.msme.dto.snapshot.AssessmentInputResponse;
 import com.msme.dto.snapshot.FinancialSnapshotResponse;
-import com.msme.repository.*;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.http.HttpStatus;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
+import com.msme.repository.FinancialSnapshotRepository;
+import com.msme.repository.MsmeRepository;
 
 /** Private MS1 contract: never routed through the browser gateway. */
 @RestController
@@ -58,7 +65,7 @@ public class InternalFinanceController {
             var s=snapshots.findByMsmeIdAndReportingPeriod(id,period.minusMonths(2-i))
                 .orElseThrow(()->new ResponseStatusException(HttpStatus.CONFLICT,"Missing monthly history"));
             return new FinancialSnapshotResponse(s.getSnapshotId(),s.getMsmeId(),s.getReportingPeriod(),s.getRevenue(),
-                s.getTotalReceivables(),s.getOverdueReceivables(),s.getCreditUsed(),s.getSubmittedByUserId(),s.getSubmittedAt(),s.getCreatedAt(),s.getUpdatedAt());
+                s.getTotalReceivables(),s.getOverdueReceivables(),s.getCreditUsed(),s.getSubmittedByUserId(),s.getCreatedAt());
         }).toList();
         return new AssessmentInputResponse(id,m.getBusinessName(),m.getSanctionedCreditLimit(),period,rows);
     }

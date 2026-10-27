@@ -1,5 +1,32 @@
 package com.msme.service;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+
+import org.junit.jupiter.api.AfterEach;
+import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import static org.mockito.ArgumentMatchers.any;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+
 import com.msme.dto.snapshot.CreateFinancialSnapshotRequest;
 import com.msme.dto.snapshot.FinancialSnapshotResponse;
 import com.msme.dto.snapshot.SnapshotReadinessResponse;
@@ -13,26 +40,6 @@ import com.msme.exception.ResourceNotFoundException;
 import com.msme.repository.FinancialSnapshotRepository;
 import com.msme.repository.MsmeRepository;
 import com.msme.security.CustomUserPrincipal;
-
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.authentication.AuthenticationCredentialsNotFoundException;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.context.SecurityContextHolder;
-
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.util.List;
-import java.util.Optional;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class FinancialSnapshotServiceTest {
@@ -96,9 +103,7 @@ class FinancialSnapshotServiceTest {
                         result.getOverdueReceivables()),
                 () -> assertEquals(new BigDecimal("200000.00"),
                         result.getCreditUsed()),
-                () -> assertNotNull(result.getSubmittedAt()),
-                () -> assertNotNull(result.getCreatedAt()),
-                () -> assertNotNull(result.getUpdatedAt())
+                () -> assertNotNull(result.getCreatedAt())
         );
 
         verify(snapshotRepository).save(any(FinancialSnapshot.class));

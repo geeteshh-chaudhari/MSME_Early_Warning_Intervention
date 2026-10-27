@@ -22,11 +22,7 @@ public class FinancialSnapshotResponse {
 
     private Long submittedByUserId;
 
-    private LocalDateTime submittedAt;
-
     private LocalDateTime createdAt;
-
-    private LocalDateTime updatedAt;
 
     public FinancialSnapshotResponse() {
     }
@@ -40,9 +36,7 @@ public class FinancialSnapshotResponse {
             BigDecimal overdueReceivables,
             BigDecimal creditUsed,
             Long submittedByUserId,
-            LocalDateTime submittedAt,
-            LocalDateTime createdAt,
-            LocalDateTime updatedAt
+            LocalDateTime createdAt
             ) {
 
         this.snapshotId = snapshotId;
@@ -53,9 +47,7 @@ public class FinancialSnapshotResponse {
         this.overdueReceivables = overdueReceivables;
         this.creditUsed = creditUsed;
         this.submittedByUserId = submittedByUserId;
-        this.submittedAt = submittedAt;
         this.createdAt = createdAt;
-        this.updatedAt = updatedAt;
     }
 
     public Long getSnapshotId() {
@@ -128,16 +120,6 @@ public class FinancialSnapshotResponse {
         this.submittedByUserId = submittedByUserId;
     }
 
-    public LocalDateTime getSubmittedAt() {
-        return submittedAt;
-    }
-
-    public void setSubmittedAt(
-            LocalDateTime submittedAt) {
-
-        this.submittedAt = submittedAt;
-    }
-
     public LocalDateTime getCreatedAt() {
         return createdAt;
     }
@@ -146,16 +128,6 @@ public class FinancialSnapshotResponse {
             LocalDateTime createdAt) {
 
         this.createdAt = createdAt;
-    }
-
-    public LocalDateTime getUpdatedAt() {
-        return updatedAt;
-    }
-
-    public void setUpdatedAt(
-            LocalDateTime updatedAt) {
-
-        this.updatedAt = updatedAt;
     }
 
     
